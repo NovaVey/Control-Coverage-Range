@@ -1,0 +1,85 @@
+name: Control-Coverage-Range
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  range:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_USER: range
+      POSTGRES_PASSWORD: range-ci-only
+      PRINCIPAL_GRAPH_DB: principalgraph
+      RBA_DB: authz_service
+      RBA_ADMIN_API_KEY: ci-only-rba-admin-key-at-least-32-characters-long
+      MINT_ADMIN_API_KEY: ci-only-mint-admin-key
+      PRINCIPAL_GRAPH_REPORT_API_KEY: ci-only-principal-graph-report-key
+      RBA_BASE_URL: http://localhost:3000
+      MINT_BASE_URL: http://localhost:3001
+      PRINCIPAL_GRAPH_DATABASE_URL: postgresql://range:range-ci-only@localhost:5432/principalgraph
+      MINT_GRAPH_EVENTS_PATH: /tmp/adc-mint-events.ndjson
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate this run's ADC root key
+        run: |
+          echo "MINT_ROOT_SECRET_KEY_B64=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Build all three sibling projects (see scripts/build-stack.mjs)
+        run: node scripts/build-stack.mjs
+
+      - name: Install this range's own dependencies
+        # --legacy-peer-deps works around a real npm/arborist crash
+        # ("Cannot read properties of null (reading 'edgesOut')") resolving
+        # vitest 4's own peer-dependency graph — reproduced directly, not a
+        # guess; see README's own "Known npm quirk" note.
+        run: npm install --legacy-peer-deps
+
+      - name: Lint, typecheck, unit test this range's own harness code
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Bring up the real assembled stack
+        run: |
+          docker compose up -d postgres
+          docker compose run --rm migrate-pg
+          docker compose up -d rba principal-graph mint
+        env:
+          MINT_ROOT_SECRET_KEY_B64: ${{ env.MINT_ROOT_SECRET_KEY_B64 }}
+
+      - name: Wait for every service to report healthy
+        run: |
+          npx tsx src/cli/index.ts doctor
+
+      - name: Run the full scenario corpus against the real stack
+        run: npm run range:run -- --out .range-out
+
+      - name: Check for coverage regressions against the committed baseline
+        run: npm run range:check-regression -- --out .range-out
+
+      - name: Every GAPS.md-derived taxonomy row has an asserting scenario
+        run: npm run range:gaps-coverage
+
+      - name: Upload coverage matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-matrix
+          path: .range-out/
+
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose logs

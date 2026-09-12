@@ -1,0 +1,136 @@
+# The identity/authorization-side rows the assembled stack's own single-layer
+# test suites have no reason to contain: the injection corpus
+# (Taint-Tracked-Tool-Broker) tests the broker alone, and the RBA soundness
+# fuzzer (src/soundness/) tests the check engine alone against its own
+# reference resolver — neither one drives a real delegation-issuance,
+# revocation, or cross-project grant-propagation path, because neither
+# project's corpus was ever meant to. These five rows are the ones this
+# range exists specifically to add. Every row cites the exact mechanism in
+# the real, assembled code that makes it a genuine question, not a
+# hypothetical one — see the referenced scenario(s) for the concrete check.
+source: identity
+rows:
+  - id: stale-grant-abuse
+    name: Stale grant abuse
+    summary: >-
+      @adc/core's verify() is fully offline — it evaluates a token's
+      caveats against local facts (sink, host, taint, time) and never makes
+      a live call back to RBA or Principal-Graph. The ONLY point RBA is
+      consulted at all is mint time (services/mint/src/bounding.ts's
+      POST /scope / POST /check calls). So once a scope-bounded token is
+      minted, revoking the underlying RBA tuple or Principal-Graph grant it
+      was bounded against does not, by itself, invalidate the token — only
+      an explicit mint-service POST /revoke (consulted via
+      @adc/revocation's polling client, itself bounded by a documented
+      150s worst-case liveness window: 60s list TTL + 30s poll interval +
+      60s clock skew) closes this, and only for tokens whose exact block
+      hash was actually revoked. A grant revoked in Principal-Graph/RBA with
+      no matching ADC revocation is a live, usable token for a resource its
+      holder no longer has any real grant on.
+    reference: >-
+      attenuated-delegation-chain/services/mint/src/bounding.ts (mint-time-only
+      RBA consultation); attenuated-delegation-chain/packages/adc-core/src/token.ts
+      verify() (no live callback); attenuated-delegation-chain/packages/adc-revocation/src/list.ts
+      (150s worst-case liveness bound, stated in that file's own comments)
+    requiresScenario: true
+  - id: over-broad-delegation
+    name: Over-broad delegation via wildcard scope bounding
+    summary: >-
+      A `scope` caveat's triples are [resourceKind, resourceId, relation],
+      and services/mint/src/bounding.ts treats resourceId === '*' as a
+      request to bound against RBA's real POST /scope endpoint — which
+      answers "does subject hold this relation on AT LEAST ONE object of
+      this kind" (existence), not "on every object" or "on which specific
+      objects." A subject who holds `view` on exactly one low-sensitivity
+      document can be minted a token whose scope caveat's stored triple is
+      literally `["document", "*", "view"]` — confirmed directly in
+      @adc/core's own evaluateCaveat() (caveats.ts:255-257: `rid === "*" ||
+      rid === resourceId`), a stored wildcard matches ANY resourceId a call
+      names, unconditionally. This range's own reading of @adc/broker's
+      gate.ts found the risk does NOT live where it first looks: a `scope`
+      caveat verified through the shipped wrapWithAdcGate() integration
+      ALWAYS denies with ADC_SCOPE, because that generic, broker-state-only
+      adapter has no way to derive resourceKind/resourceId/relation facts at
+      all (gate.ts's own doc comment says so explicitly, and directs an
+      integrator who needs scope-checking to call `@adc/core`'s verify()
+      directly from the tool's own execute(), supplying those facts by
+      hand). The real risk lives THERE: the hand-rolled facts-supplying code
+      every real integration is forced to write, with no shared, tested
+      library logic checking whether the resourceId it reads off the call's
+      own arguments has anything to do with what the token's mint-time
+      existence check actually confirmed. This is Excessive Agency (OWASP
+      LLM06) instantiated exactly:
+      the token's effective reach at verify time is broader than what its
+      own mint-time authorization check actually established.
+    reference: >-
+      attenuated-delegation-chain/services/mint/src/bounding.ts:14-22,130-184
+      (wildcard-triple handling, POST /scope call);
+      attenuated-delegation-chain/packages/adc-core/src/caveats.ts:255-257
+      (evaluateCaveat's scope case: `rid === "*" || rid === resourceId` —
+      confirmed directly, not inferred, that a stored wildcard triple matches
+      ANY resourceId at verify time, unconditionally);
+      relationship-based-authorization/src/api/server.ts:1701-1727 and
+      src/audit/scope.ts (queryScope's own "at least one" semantics, stated in
+      that route's own doc comment)
+    requiresScenario: true
+  - id: confused-deputy
+    name: Confused deputy via unattributed on-behalf-of
+    summary: >-
+      An agent acting "on behalf of" a human is exactly principal-graph's
+      own on-behalf-of-escalation policy target (src/policies.ts) — but
+      @adc/graph's own README documents the trap this range has to route
+      around, not invent: an adc-graph GraphEvent's onBehalfOf identity
+      resolves to a resource row via ensurePrincipal/ensureResource with NO
+      accompanying grant_edge proving that on-behalf-of relationship was
+      ever actually authorized, so every single delegated action reads as a
+      100% false-positive escalation unless a `can_use`/adc_block grant is
+      also recorded (principal-graph's src/resource-vocabulary.ts already
+      lists `adc_block: ['can_use']` for exactly this). A confused-deputy
+      scenario is the same shape with the grant genuinely absent: an agent
+      claims onBehalfOf a principal it was never delegated by at all, and
+      the question is whether on-behalf-of-escalation actually fires for
+      that case and not just for the well-formed one.
+    reference: >-
+      attenuated-delegation-chain/packages/adc-graph/README.md (the
+      documented on_behalf_of-without-a-grant trap and worked adapter);
+      principal-graph/src/policies.ts:29-36,118-122 (on-behalf-of-escalation
+      rule); principal-graph/src/resource-vocabulary.ts:30-49 (adc_block
+      already present)
+    requiresScenario: true
+  - id: cross-tenant-reachability
+    name: Cross-tenant reachability
+    summary: >-
+      RBA's schema DSL has no first-class "tenant" primitive — isolation
+      between two organizations is whatever the schema author's own
+      namespace graph happens to enforce (org -> group -> folder -> document,
+      per schema/example.authz). A grant issued inside org A's tree reaching
+      an object rooted under org B is only prevented if no tuple path
+      connects them; this range's rows test that boundary directly (a
+      subject with `member`/`view` on org A attempting a resource under
+      org B with no tuple linking the two org trees) and, separately, tests
+      whether the over-broad-delegation row's wildcard-scope mechanism can
+      be used to reach across that same boundary once a token exists.
+    reference: >-
+      relationship-based-authorization/schema/example.authz (org/group/folder/document
+      namespace graph, no tenant primitive); relationship-based-authorization/docs/RELATIONS.md
+      (rewrite-rule grammar this isolation is built entirely out of)
+    requiresScenario: true
+  - id: group-nesting-escalation
+    name: Group-nesting escalation
+    summary: >-
+      RBA's nested-userset subject type (`relation member: user | group#member`)
+      allows unbounded-depth group nesting with no namespace-specific
+      recursion code — group:eng#member can itself be a subject of
+      group:all-eng#member. This range's row tests whether adding a
+      principal to an inner group correctly (and only correctly) propagates
+      view/admin permission up through however many nesting levels the
+      scenario's fixture declares, including the depth-ceiling
+      (CHECK_MAX_DEPTH, default 25) and cycle-guard behavior RBA's own
+      D-158/D-159 fixes made fail-closed (`certain:false`) rather than
+      fail-open on an unprovable deep/cyclic case.
+    reference: >-
+      relationship-based-authorization/docs/RELATIONS.md (nested-userset
+      grammar); relationship-based-authorization/src/resolve/production/resolver.ts:497-549
+      (certain:false fail-closed on depth/cycle); relationship-based-authorization/src/config/env.ts:105
+      (CHECK_MAX_DEPTH default 25)
+    requiresScenario: true

@@ -1,0 +1,296 @@
+id: depth-ceiling-fail-closed-deny
+title: A depth-ceiling fail-closed deny is indistinguishable from a genuine deny over HTTP
+summary: >-
+  alice is genuinely, legitimately connected to shared-docs through 27
+  levels of nested group membership — past RBA's own CHECK_MAX_DEPTH
+  (default 25). resolver.ts's own `certain` flag correctly
+  marks this as an inconclusive, fail-closed deny rather than an unsound
+  grant (D-158/D-159) — a real, deliberate, correct safety choice. But
+  POST /check's own response never exposes `certain` at all (confirmed:
+  absent from src/api/responses.ts and every route) — a caller has no way
+  to tell this apart from a genuine, confirmed deny. This is an
+  availability cost of a security-correct design, not a security miss —
+  the outcome vocabulary here is calibrated for the latter, so this
+  scenario's own rationale states plainly where the fit is imperfect.
+taxonomy:
+  - { source: gaps/rba, id: certain-false-fail-closed-deny }
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+  resources:
+    - { id: shared-docs, kind: folder, externalId: shared-docs-deep }
+  grants: []
+  rebac:
+    schema: |
+      namespace group {
+        relation member: principal | group#member
+        permission view = member
+      }
+      namespace folder {
+        relation parent: folder
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+      }
+    tuples:
+      - {
+          objectNs: group,
+          objectId: g0,
+          relation: member,
+          subjectNs: principal,
+          subjectId: alice,
+        }
+      - {
+          objectNs: group,
+          objectId: g1,
+          relation: member,
+          subjectNs: group,
+          subjectId: g0,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g2,
+          relation: member,
+          subjectNs: group,
+          subjectId: g1,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g3,
+          relation: member,
+          subjectNs: group,
+          subjectId: g2,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g4,
+          relation: member,
+          subjectNs: group,
+          subjectId: g3,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g5,
+          relation: member,
+          subjectNs: group,
+          subjectId: g4,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g6,
+          relation: member,
+          subjectNs: group,
+          subjectId: g5,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g7,
+          relation: member,
+          subjectNs: group,
+          subjectId: g6,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g8,
+          relation: member,
+          subjectNs: group,
+          subjectId: g7,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g9,
+          relation: member,
+          subjectNs: group,
+          subjectId: g8,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g10,
+          relation: member,
+          subjectNs: group,
+          subjectId: g9,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g11,
+          relation: member,
+          subjectNs: group,
+          subjectId: g10,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g12,
+          relation: member,
+          subjectNs: group,
+          subjectId: g11,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g13,
+          relation: member,
+          subjectNs: group,
+          subjectId: g12,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g14,
+          relation: member,
+          subjectNs: group,
+          subjectId: g13,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g15,
+          relation: member,
+          subjectNs: group,
+          subjectId: g14,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g16,
+          relation: member,
+          subjectNs: group,
+          subjectId: g15,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g17,
+          relation: member,
+          subjectNs: group,
+          subjectId: g16,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g18,
+          relation: member,
+          subjectNs: group,
+          subjectId: g17,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g19,
+          relation: member,
+          subjectNs: group,
+          subjectId: g18,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g20,
+          relation: member,
+          subjectNs: group,
+          subjectId: g19,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g21,
+          relation: member,
+          subjectNs: group,
+          subjectId: g20,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g22,
+          relation: member,
+          subjectNs: group,
+          subjectId: g21,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g23,
+          relation: member,
+          subjectNs: group,
+          subjectId: g22,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g24,
+          relation: member,
+          subjectNs: group,
+          subjectId: g23,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g25,
+          relation: member,
+          subjectNs: group,
+          subjectId: g24,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: g26,
+          relation: member,
+          subjectNs: group,
+          subjectId: g25,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: folder,
+          objectId: shared-docs,
+          relation: viewer,
+          subjectNs: group,
+          subjectId: g26,
+          subjectRelation: member,
+        }
+  adcTokens: []
+tools: []
+adversary:
+  actingPrincipalId: alice
+  steps: []
+expected:
+  rebac:
+    check:
+      {
+        subjectPrincipalId: alice,
+        relation: view,
+        objectResourceId: shared-docs,
+      }
+    allowed: false
+  cells:
+    - layer: rebac
+      outcome: observed-only
+      rationale: >-
+        This is a genuine, legitimate grant (a real, uninterrupted
+        membership chain 27 hops deep) that RBA's own CHECK_MAX_DEPTH=25
+        ceiling correctly, safely fails closed on (D-158/D-159's own
+        certain:false discipline) — reported to any HTTP caller as a plain
+        allowed:false, identical in shape to a genuine deny, since `certain`
+        is never exposed over HTTP at all. Scored 'observed-only' per
+        src/scoring/score.ts's own binary model for this column (the check
+        genuinely denies, so wouldHaveCaught is true) — but this is not a
+        real attack this range is claiming coverage for; the actual finding
+        is narrower and belongs to the rationale, not the outcome label:
+        nothing in this stack surfaces the DISTINCTION between "denied
+        because unauthorized" and "denied because inconclusive," an
+        availability cost of a security-correct design, the mirror image of
+        every 'missed' cell in this corpus (which are about a real attack
+        getting through, not a real grant being wrongly refused). See
+        taxonomy/gaps/rba.yaml's certain-false-fail-closed-deny row for the
+        finding itself; this cell exists to prove the chain that triggers it
+        is genuinely connected end-to-end, not merely asserted.

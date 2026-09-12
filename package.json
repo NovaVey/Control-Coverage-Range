@@ -1,0 +1,90 @@
+{
+  "name": "control-coverage-range",
+  "version": "0.1.0",
+  "description": "An attack range for the whole agent-security stack: assembles Taint-Tracked-Tool-Broker, Principal-Graph, Relationship-Based-Authorization, and Attenuated-Delegation-Chain for real, runs scripted attack scenarios through the composed system, and reports which layer caught each technique, which would have, and which cells nothing covers.",
+  "type": "module",
+  "license": "MIT",
+  "author": "NovaVey",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NovaVey/Control-Coverage-Range.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NovaVey/Control-Coverage-Range/issues"
+  },
+  "homepage": "https://github.com/NovaVey/Control-Coverage-Range#readme",
+  "keywords": [
+    "llm",
+    "agent",
+    "agentic",
+    "security",
+    "attack-range",
+    "coverage",
+    "authorization",
+    "rebac",
+    "delegation",
+    "prompt-injection",
+    "owasp-llm-top-10",
+    "mitre-atlas"
+  ],
+  "files": [
+    "dist",
+    "taxonomy",
+    "scenarios",
+    "baseline",
+    "README.md",
+    "ARCHITECTURE.md",
+    "GAPS.md",
+    "CONTRIBUTING.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "ccr": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:stack": "node scripts/build-stack.mjs",
+    "prepare:stack": "npm run build:stack",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scenarios/**/*.yaml\" \"taxonomy/**/*.yaml\" \"*.{js,ts,json}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scenarios/**/*.yaml\" \"taxonomy/**/*.yaml\" \"*.{js,ts,json}\"",
+    "range": "tsx src/cli/index.ts",
+    "range:run": "tsx src/cli/index.ts run",
+    "range:check-regression": "tsx src/cli/index.ts check-regression",
+    "range:doctor": "tsx src/cli/index.ts doctor",
+    "range:gaps-coverage": "tsx src/cli/index.ts gaps-coverage",
+    "verify": "npm run typecheck && npm run build && npm test && npm run lint && npm run format:check"
+  },
+  "dependencies": {
+    "@adc/core": "file:./stack/attenuated-delegation-chain/packages/adc-core",
+    "@adc/broker": "file:./stack/attenuated-delegation-chain/packages/adc-broker",
+    "@adc/graph": "file:./stack/attenuated-delegation-chain/packages/adc-graph",
+    "@adc/revocation": "file:./stack/attenuated-delegation-chain/packages/adc-revocation",
+    "pg": "^8.23.0",
+    "js-yaml": "^4.1.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/pg": "^8.23.1",
+    "@eslint/js": "^9.18.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}

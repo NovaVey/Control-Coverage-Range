@@ -1,0 +1,77 @@
+id: cross-tenant-reachability
+title: RBA's namespace graph, not a first-class tenant concept, is what enforces isolation
+summary: >-
+  RBA's schema DSL has no tenant primitive at all — isolation between two
+  organizations is entirely whatever tuple graph the schema author actually
+  wires up. Alice is a member of acme-eng only; a folder scoped to a
+  different org's team (other-corp-eng) grants viewer access to that
+  group's own members. No tuple path connects alice to other-corp-eng at
+  all. This scenario asserts the isolation boundary actually holds under
+  this schema — a positive, still-load-bearing finding: it demonstrates
+  what would break silently if a future schema change (e.g. a shared parent
+  folder, a wildcard subject) ever connected the two trees.
+taxonomy:
+  - { source: identity, id: cross-tenant-reachability }
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+  resources:
+    - { id: other-corp-secrets, kind: folder, externalId: other-corp-secrets }
+  grants: []
+  rebac:
+    schema: |
+      namespace group {
+        relation member: principal | group#member
+        permission view = member
+      }
+      namespace folder {
+        relation parent: folder
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+      }
+    tuples:
+      - {
+          objectNs: group,
+          objectId: acme-eng,
+          relation: member,
+          subjectNs: principal,
+          subjectId: alice,
+        }
+      - {
+          objectNs: folder,
+          objectId: other-corp-secrets,
+          relation: viewer,
+          subjectNs: group,
+          subjectId: other-corp-eng,
+          subjectRelation: member,
+        }
+  adcTokens: []
+tools: []
+adversary:
+  actingPrincipalId: alice
+  steps: []
+expected:
+  rebac:
+    check:
+      {
+        subjectPrincipalId: alice,
+        relation: view,
+        objectResourceId: other-corp-secrets,
+      }
+    allowed: false
+  cells:
+    - layer: rebac
+      outcome: observed-only
+      rationale: >-
+        alice is a member of group:acme-eng only; folder:other-corp-secrets
+        grants viewer to group:other-corp-eng#member, a group she never
+        joined. No tuple anywhere connects acme-eng to other-corp-eng, so
+        folder.view correctly denies. This is the isolation boundary
+        holding under this specific schema — a real, reachable check that
+        would have to be re-verified after any future schema change
+        touching either group's own tuple graph (docs/RELATIONS.md's own
+        nested-userset mechanism has no per-namespace tenant concept to
+        fall back on if that graph ever grows a connecting path).

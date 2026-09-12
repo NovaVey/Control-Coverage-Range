@@ -1,0 +1,112 @@
+# Assembles all four real projects on one network: one Postgres instance
+# hosting both Principal-Graph's and RBA's own databases (two separate
+# logical databases, each project's own migrations run against its own),
+# the RBA check-engine service, the Principal-Graph read-only report
+# service, and the ADC mint service. Nothing here is a stand-in — every
+# image is built from that project's own real source (a git submodule
+# pinned to a specific commit; see .gitmodules), using that project's own
+# Dockerfile where one exists (Principal-Graph, RBA) or one this range
+# supplies where it doesn't (the ADC mint service — see docker/mint.Dockerfile
+# and taxonomy/gaps/adc.yaml's own note on why).
+#
+#   docker compose up -d postgres           # start just the shared database
+#   docker compose run --rm migrate-pg      # Principal-Graph's own migrations
+#   docker compose up -d rba                # RBA check engine on :3000
+#   docker compose up -d principal-graph    # Principal-Graph report API on :8080
+#   docker compose up -d mint               # ADC mint service on :3001
+#   npm run range:run                       # drive the whole scenario corpus through it
+#
+# See README's own "Try it yourself" for the full one-command sequence and
+# .env.example for every variable referenced below.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-range}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-range-dev-only}
+      POSTGRES_DB: postgres
+      # Read by docker/create-databases.sh (docker-entrypoint-initdb.d), not by Postgres
+      # itself — this is how that script knows the two logical database names to create.
+      PRINCIPAL_GRAPH_DB: ${PRINCIPAL_GRAPH_DB:-principalgraph}
+      RBA_DB: ${RBA_DB:-authz_service}
+    ports:
+      - '5432:5432'
+    volumes:
+      - range-postgres-data:/var/lib/postgresql/data
+      - ./docker/create-databases.sh:/docker-entrypoint-initdb.d/create-databases.sh
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-range}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Principal-Graph's own migration runner (stack/principal-graph/scripts/run-migrations.ts,
+  # built via that project's own Dockerfile) against its own database.
+  migrate-pg:
+    build:
+      context: ./stack/principal-graph
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-range}:${POSTGRES_PASSWORD:-range-dev-only}@postgres:5432/${PRINCIPAL_GRAPH_DB:-principalgraph}
+    command: ['node', 'dist/scripts/run-migrations.js']
+
+  principal-graph:
+    build:
+      context: ./stack/principal-graph
+      dockerfile: Dockerfile
+    depends_on:
+      migrate-pg:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-range}:${POSTGRES_PASSWORD:-range-dev-only}@postgres:5432/${PRINCIPAL_GRAPH_DB:-principalgraph}
+      PRINCIPAL_GRAPH_REPORT_API_KEY: ${PRINCIPAL_GRAPH_REPORT_API_KEY:?set PRINCIPAL_GRAPH_REPORT_API_KEY (see .env.example)}
+    ports:
+      - '8080:8080'
+
+  rba:
+    build:
+      context: ./stack/relationship-based-authorization
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-range}:${POSTGRES_PASSWORD:-range-dev-only}@postgres:5432/${RBA_DB:-authz_service}
+      PORT: 3000
+      NODE_ENV: development
+      ADMIN_API_KEY: ${RBA_ADMIN_API_KEY:?set RBA_ADMIN_API_KEY, 32+ chars (see .env.example)}
+    ports:
+      - '3000:3000'
+
+  # services/mint ships no Dockerfile of its own (confirmed: `find` turns up nothing —
+  # see taxonomy/gaps/adc.yaml) — docker/mint.Dockerfile is this range's own, built
+  # against the real, unmodified source in the pinned submodule.
+  mint:
+    build:
+      context: ./stack/attenuated-delegation-chain
+      dockerfile: ../../docker/mint.Dockerfile
+    depends_on:
+      rba:
+        condition: service_started
+    environment:
+      PORT: 3001
+      MINT_ROOT_SECRET_KEY_B64: ${MINT_ROOT_SECRET_KEY_B64:?generate one — see .env.example}
+      RBA_BASE_URL: http://rba:3000
+      RBA_API_KEY: ${RBA_ADMIN_API_KEY:?set RBA_ADMIN_API_KEY, 32+ chars (see .env.example)}
+      MINT_ADMIN_API_KEY: ${MINT_ADMIN_API_KEY:?set MINT_ADMIN_API_KEY (see .env.example)}
+      # Set deliberately (unlike a real deployment that might forget this one optional
+      # var, per taxonomy/gaps/adc.yaml's graph-events-invisible-by-default row) so this
+      # range's own adc-graph bridge (src/adapters/adc.ts) has a real file to tail.
+      MINT_GRAPH_EVENTS_PATH: /var/log/adc-mint/events.ndjson
+    volumes:
+      - range-mint-events:/var/log/adc-mint
+    ports:
+      - '3001:3001'
+
+volumes:
+  range-postgres-data:
+  range-mint-events:

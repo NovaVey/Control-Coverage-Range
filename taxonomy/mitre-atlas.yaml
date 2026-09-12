@@ -1,0 +1,99 @@
+# MITRE ATLAS (Adversarial Threat Landscape for Artificial-Intelligence
+# Systems), v5.1.0 (Nov 2025): 16 tactics, 84 techniques.
+# https://atlas.mitre.org/  |  https://github.com/mitre-atlas/atlas-data
+# Only techniques relevant to a tool-calling agent's runtime authorization
+# surface are rowed here (the full 84 span training-time/model-extraction
+# territory this range's four projects have no visibility into at all —
+# recorded honestly as out of scope rather than padding the matrix with
+# techniques nothing here could ever observe).
+source: mitre-atlas
+rows:
+  - id: AML.T0051
+    name: "AML.T0051 LLM Prompt Injection"
+    summary: >-
+      Direct (AML.T0051.000) and indirect (AML.T0051.001) prompt injection —
+      the central case the broker's watermark and injection corpus exist
+      for. Tactic: Execution (AML.TA0005).
+    reference: "https://atlas.mitre.org/techniques/AML.T0051"
+    requiresScenario: true
+  - id: AML.T0053
+    name: "AML.T0053 AI Agent Tool Invocation"
+    summary: >-
+      An adversary steers an agent into invoking its own connected tools —
+      the exact shape every scenario in this range drives through the
+      assembled stack. Tactics: Execution (AML.TA0005), Privilege
+      Escalation (AML.TA0012).
+    reference: "https://atlas.mitre.org/techniques/AML.T0053"
+    requiresScenario: true
+  - id: AML.T0054
+    name: "AML.T0054 LLM Jailbreak"
+    summary: >-
+      Bypassing model guardrails to reach a state where it will attempt an
+      otherwise-refused action. This range measures what happens AFTER a
+      jailbreak succeeds (does the tool-call layer still gate the resulting
+      action) rather than the jailbreak technique itself — see
+      ARCHITECTURE.md's scripted-adversary note. Tactics: Privilege
+      Escalation (AML.TA0012), Defense Evasion (AML.TA0007).
+    reference: "https://atlas.mitre.org/techniques/AML.T0054"
+    requiresScenario: true
+  - id: AML.T0055
+    name: "AML.T0055 Unsecured Credentials"
+    summary: >-
+      Reused/leaked delegation tokens, API keys, or grants an adversary
+      obtains without authorization and replays. Directly modeled by the
+      ADC token-replay and stale-grant-abuse identity rows. Tactic:
+      Credential Access (AML.TA0013).
+    reference: "https://atlas.mitre.org/techniques/AML.T0055"
+    requiresScenario: true
+  - id: AML.T0012
+    name: "AML.T0012 Valid Accounts"
+    summary: >-
+      Using a legitimately-issued identity beyond what its issuer intended —
+      the confused-deputy and on-behalf-of-escalation rows model this
+      directly against Principal-Graph's own on-behalf-of-escalation policy.
+      Tactics: Initial Access (AML.TA0004), Privilege Escalation
+      (AML.TA0012).
+    reference: "https://atlas.mitre.org/techniques/AML.T0012"
+    requiresScenario: true
+  - id: AML.T0056
+    name: "AML.T0056 Extract LLM System Prompt"
+    summary: >-
+      Getting the model to reveal its own system prompt/instructions.
+      Tactic: Exfiltration (AML.TA0010).
+    reference: "https://atlas.mitre.org/techniques/AML.T0056"
+    requiresScenario: true
+  - id: AML.T0057
+    name: "AML.T0057 LLM Data Leakage"
+    summary: >-
+      The model discloses sensitive data it had access to. Modeled as a
+      broker EXFIL sink at RAW_UNTRUSTED with readsPrivateData set (the
+      lethal-trifecta escalator). Tactic: Exfiltration (AML.TA0010).
+    reference: "https://atlas.mitre.org/techniques/AML.T0057"
+    requiresScenario: true
+  - id: AML.T0067
+    name: "AML.T0067 LLM Trusted Output Components Manipulation"
+    summary: >-
+      Manipulating a response's structural/trust-signaling components (e.g.
+      fabricated citations) to appear trustworthy — the closest ATLAS
+      analog to the broker's quarantine-output-grounding gap
+      (checkFieldGrounding(), TTTB GAPS.md #27). Tactic: Defense Evasion
+      (AML.TA0007).
+    reference: "https://atlas.mitre.org/techniques/AML.T0067"
+    requiresScenario: true
+  - id: AML.T0061
+    name: "AML.T0061 LLM Prompt Self-Replication"
+    summary: >-
+      A prompt that causes its own re-injection into future turns/sessions —
+      the ATLAS analog of TTTB's own agent-memory-cross-session-laundering
+      TRUE KNOWN GAP corpus case. Tactic: Persistence (AML.TA0006).
+    reference: "https://atlas.mitre.org/techniques/AML.T0061"
+    requiresScenario: true
+  - id: AML.T0029
+    name: "AML.T0029 Denial of AI Service"
+    summary: >-
+      Exhausting rate limits / availability rather than escalating
+      privilege. Modeled against RBA's documented 20/min write limit and the
+      mint service's MINT_RATE_LIMIT_PER_MINUTE. Tactic: Impact
+      (AML.TA0011).
+    reference: "https://atlas.mitre.org/techniques/AML.T0029"
+    requiresScenario: true

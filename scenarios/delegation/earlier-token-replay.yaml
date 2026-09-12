@@ -1,0 +1,75 @@
+id: earlier-token-replay
+title: Replaying an earlier, less-attenuated token bypasses a narrowing its holder applied downstream
+summary: >-
+  Alice mints a broad root token T0 (real HTTP mint — this produces a real
+  @adc/graph 'mint' event, which this range's own bridge
+  (src/adapters/adc.ts, translateGraphEventToPrincipalGraph) drains from
+  the mint service's MINT_GRAPH_EVENTS_PATH into Principal-Graph). She
+  attenuates it offline into T1, adding a `sinks` caveat that narrows T1 to
+  write:fs only, intending to hand T1 (not T0) to a more limited context.
+  docs/PLAN.md's own Claim 3 (non-removability) is sound — nothing can
+  strip T1's own narrowing — but names its own residual plainly: alice
+  herself can simply present T0 again, since she genuinely held it before
+  narrowing it further. This scenario demonstrates that residual directly.
+taxonomy:
+  - { source: gaps/adc, id: earlier-token-replay-residual }
+  - { source: gaps/principal-graph, id: adc-graph-sink-event-shape-drift }
+  - { source: gaps/adc, id: graph-events-invisible-by-default }
+  - { source: mitre-atlas, id: AML.T0055 }
+assertsKnownGap: true
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+  resources: []
+  grants: []
+  rebac: { tuples: [] }
+  adcTokens:
+    - id: t0-broad
+      via: mint
+      mint:
+        subjectPrincipalId: alice
+        caveats: []
+    - id: t1-narrowed
+      via: offline
+      offline:
+        rootCaveats: []
+        attenuations:
+          - - { kind: sinks, classes: ["write:fs"] }
+        sealed: false
+  adcRevoked: []
+tools:
+  - name: shell_exec
+    capabilities: [exec:shell]
+    adcGate: broker-facts
+adversary:
+  actingPrincipalId: alice
+  steps:
+    - tool: shell_exec
+      args: { cmd: "echo ok" }
+      adcToken: t1-narrowed
+    - tool: shell_exec
+      args: { cmd: "echo ok" }
+      adcToken: t0-broad
+expected:
+  adc:
+    result: allow
+  cells:
+    - layer: adc
+      outcome: missed
+      rationale: >-
+        The first call, presenting t1-narrowed, correctly denies (ADC_SINK
+        — exec:shell is not in T1's own ['write:fs'] sinks allowlist),
+        proving the narrowing itself is real and enforced. The second call,
+        presenting t0-broad — the exact same root token alice genuinely
+        held before she narrowed it — has no sinks restriction at all and
+        verifies ALLOW for the identical exec:shell call. Nothing about
+        ADC's signature-chain design can distinguish "a legitimately-held
+        earlier token, replayed" from "a forged or stolen one" — this is
+        docs/PLAN.md's own disclosed Claim 3 residual, not a bug in the
+        cryptography.
+
+# t1-narrowed is offline-minted deliberately (@adc/core's attenuate() directly) since this
+# residual is about a delegator's own choice to replay, not about anything the mint
+# service's RBA scope-bounding could have prevented — the sinks caveat here needs no RBA
+# consultation at all (bounding.ts only ever bounds `scope` caveats). Only t0-broad's mint
+# goes through the real HTTP mint service and produces a real 'mint' @adc/graph event.

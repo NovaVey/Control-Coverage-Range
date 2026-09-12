@@ -1,0 +1,95 @@
+# Rows found by reading attenuated-delegation-chain's own source and
+# docs/PLAN.md directly (this project has no separate GAPS.md at the commit
+# this range vendors; docs/PLAN.md's own Claims 1-3 section states some of
+# these residuals explicitly, others are found by reading the mint service
+# and adc-graph/adc-revocation defaults against how this range actually
+# wires them).
+source: gaps/adc
+rows:
+  - id: wrapwithadcgate-cannot-verify-scope-caveats
+    name: The one shipped TTTB integration point cannot verify `scope` caveats at all
+    summary: >-
+      @adc/broker's own deriveCallFacts() computes CallFactSets from three
+      things — live taint watermark, declared sink capabilities, detected
+      destination host — and structurally NEVER includes
+      resourceKind/resourceId/relation. @adc/core's evaluateCaveat() denies
+      a `scope` caveat outright (ADC_SCOPE, "resourceKind/resourceId/relation
+      facts were not supplied") whenever those facts are absent. The
+      practical consequence, confirmed by reading both files directly: ANY
+      token carrying a `scope` caveat, checked through wrapWithAdcGate() —
+      the one integration point this whole four-project stack actually
+      ships between ADC and the broker — denies unconditionally, regardless
+      of whether the call is genuinely in-scope or not. gate.ts's own doc
+      comment states this plainly and names the workaround: call
+      `@adc/core`'s verify() directly from the gated tool's own execute(),
+      supplying resource facts by hand. This range's own broker adapter
+      (src/adapters/broker.ts, adcGate:'resource-scoped') implements exactly
+      that workaround to exercise scope caveats at all — every scenario
+      using one had to route around wrapWithAdcGate entirely, which is
+      itself the finding: a real deployment minting scope-bounded delegation
+      tokens cannot use the shared, tested integration code for the one
+      caveat kind that expresses "which resource" at all.
+    reference: >-
+      attenuated-delegation-chain/packages/adc-broker/src/facts.ts (CallFactSets
+      has no resource fields at all); attenuated-delegation-chain/packages/adc-broker/src/gate.ts
+      (its own doc comment naming this limitation and the direct-verify()
+      workaround); attenuated-delegation-chain/packages/adc-core/src/caveats.ts:252-253
+      (evalDeny on missing resourceKind/resourceId/relation facts)
+    stillOpen: true
+    requiresScenario: true
+  - id: earlier-token-replay-residual
+    name: "Claim 3's own disclosed residual: replaying an earlier, less-attenuated token"
+    summary: >-
+      docs/PLAN.md's Claim 3 (non-removability) argues no HOLDER can strip a
+      caveat added at or before their own hop, because doing so needs a
+      secret key that appears in no token they ever received — a real,
+      sound argument, not overclaimed. But the same document names the
+      residual directly: an intermediate delegator who received token T0
+      and issued a MORE narrowly-attenuated T1 to a downstream holder can
+      always simply present T0 again themselves — nothing about signature
+      chains prevents replaying a token you genuinely, legitimately held
+      before you narrowed it further for someone else. This is an
+      expiry/revocation problem, not a signature-scheme failure, and this
+      range's stale-grant-abuse identity row (taxonomy/identity-controls.yaml)
+      is the concrete mechanism that would have to close it — this row asks
+      whether it actually does.
+    reference: "attenuated-delegation-chain/docs/PLAN.md section 4, Claim 3"
+    stillOpen: true
+    requiresScenario: true
+  - id: graph-events-invisible-by-default
+    name: Mint/revoke events are a private, unobservable in-memory sink unless MINT_GRAPH_EVENTS_PATH is set
+    summary: >-
+      services/mint's .env.example states plainly: unset
+      MINT_GRAPH_EVENTS_PATH means every mint/attenuate/verify/revoke
+      GraphEvent this service builds goes to "a private, process-local
+      in-memory sink nobody outside this process can observe... exactly as
+      it's always been." This is the identical shape as
+      Taint-Tracked-Tool-Broker's own GAPS.md #25 (a silent no-op AuditSink
+      by default) — an operator who deploys the mint service exactly per
+      its own README Quick Start, without separately noticing this one
+      optional env var, gets zero audit trail of every delegation issued or
+      revoked. This range's docker-compose sets MINT_GRAPH_EVENTS_PATH
+      deliberately (see ARCHITECTURE.md) specifically so its own
+      adc-graph-sink adapter has something to tail — the row exists to keep
+      that default's real-world cost visible rather than assuming every
+      deployment remembers to do the same.
+    reference: "attenuated-delegation-chain/services/mint/.env.example:34-41; taint-tracked-tool-broker/GAPS.md #25 (the matching NOOP_AUDIT precedent)"
+    stillOpen: true
+    requiresScenario: true
+  - id: mint-scope-bounding-coupled-to-rba-availability
+    name: Wildcard-scope minting is rate-limited by RBA's own POST /scope limit
+    summary: >-
+      services/mint/src/bounding.ts calls RBA's real POST /scope for every
+      wildcard-resourceId caveat triple at mint time — and RBA's own route
+      table rate-limits POST /scope at 20/min (checkBatchRateLimit, the same
+      tier as /check/batch), independent of the mint service's own
+      MINT_RATE_LIMIT_PER_MINUTE (default 60/min). A burst of legitimate
+      mint requests needing wildcard scope-bounding can exhaust RBA's
+      /scope budget well before hitting the mint service's own limit,
+      surfacing to callers as `502 rba_unavailable`/`429` — a genuine,
+      previously-undocumented availability coupling between two of the four
+      assembled projects that neither project's own single-layer test suite
+      has any way to notice.
+    reference: "attenuated-delegation-chain/services/mint/src/bounding.ts (POST /scope call site); relationship-based-authorization/src/api/server.ts:1727-1728 (POST /scope, 20/min checkBatchRateLimit)"
+    stillOpen: true
+    requiresScenario: true

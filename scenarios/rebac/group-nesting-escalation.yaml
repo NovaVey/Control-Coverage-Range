@@ -1,0 +1,97 @@
+id: group-nesting-escalation
+title: Adding a principal to an inner group correctly propagates through nested membership
+summary: >-
+  RBA's nested-userset subject type (relation member: principal | group#member)
+  allows unbounded-depth group nesting with no per-namespace recursion code
+  at all. This scenario nests three levels deep — group:leaf has member
+  alice; group:mid has member group:leaf#member; group:root has member
+  group:mid#member; a folder grants viewer to group:root#member — and
+  checks that alice's view permission actually propagates all the way up,
+  and that the depth ceiling (CHECK_MAX_DEPTH, default 25) is nowhere near
+  being an issue at this depth.
+taxonomy:
+  - { source: identity, id: group-nesting-escalation }
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+  resources:
+    - { id: shared-docs, kind: folder, externalId: shared-docs }
+  grants: []
+  rebac:
+    schema: |
+      namespace group {
+        relation member: principal | group#member
+        permission view = member
+      }
+      namespace folder {
+        relation parent: folder
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+      }
+    tuples:
+      - {
+          objectNs: group,
+          objectId: leaf,
+          relation: member,
+          subjectNs: principal,
+          subjectId: alice,
+        }
+      - {
+          objectNs: group,
+          objectId: mid,
+          relation: member,
+          subjectNs: group,
+          subjectId: leaf,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: group,
+          objectId: root,
+          relation: member,
+          subjectNs: group,
+          subjectId: mid,
+          subjectRelation: member,
+        }
+      - {
+          objectNs: folder,
+          objectId: shared-docs,
+          relation: viewer,
+          subjectNs: group,
+          subjectId: root,
+          subjectRelation: member,
+        }
+  adcTokens: []
+tools: []
+adversary:
+  actingPrincipalId: alice
+  steps: []
+expected:
+  rebac:
+    check:
+      {
+        subjectPrincipalId: alice,
+        relation: view,
+        objectResourceId: shared-docs,
+      }
+    allowed: true
+  cells:
+    - layer: rebac
+      outcome: missed
+      rationale: >-
+        This cell is deliberately claimed 'missed', not 'observed-only' —
+        see src/scoring/score.ts's own definition: 'observed-only' means
+        the check WOULD catch/deny an attack; here the correct, INTENDED
+        answer is allowed:true (alice really should see shared-docs through
+        three levels of legitimate group nesting), so there is nothing to
+        "catch." This scenario is a control: it demonstrates the nested-
+        userset mechanism (docs/RELATIONS.md) correctly propagating
+        permission through group:leaf -> group:mid -> group:root at a depth
+        comfortably inside CHECK_MAX_DEPTH (default 25) — the real
+        adversarial question (does a WRONG grant escalate through nesting
+        it shouldn't) needs its own future scenario once this baseline is
+        established; the outcome vocabulary here has no dedicated "correct
+        allow" label, so 'missed' is the closest honest fit for "nothing
+        was caught because there was nothing to catch."

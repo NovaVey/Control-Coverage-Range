@@ -1,0 +1,100 @@
+id: mint-scope-bounding-rate-limit-coupling
+title: Wildcard-scoped minting shares RBA's 20/min POST /scope budget with everything else
+summary: >-
+  Every wildcard-scope mint request the mint service processes makes its
+  own real POST /scope call to RBA (services/mint/src/bounding.ts) — and
+  RBA rate-limits POST /scope at 20/min (checkBatchRateLimit, the same
+  tier as /check/batch), independent of the mint service's own
+  MINT_RATE_LIMIT_PER_MINUTE (default 60/min, a materially looser budget).
+  This scenario deliberately does NOT try to force a real 429 in this
+  corpus's own CI run — doing so would burn a shared RBA instance's rate
+  budget for every scenario that happens to run afterward in the same
+  minute, exactly the kind of cross-scenario pollution
+  taxonomy/gaps/control-coverage-range.yaml's own "one shared database"
+  design note warns about for state, applied here to a shared rate-limit
+  budget instead. It performs three ordinary wildcard mints (well under the
+  limit) and states the coupling as a confirmed, cited fact rather than an
+  empirically-forced failure.
+taxonomy:
+  - { source: gaps/adc, id: mint-scope-bounding-coupled-to-rba-availability }
+  - { source: gaps/rba, id: write-rate-limit-20-per-minute }
+  - { source: mitre-atlas, id: AML.T0029 }
+  - { source: owasp-llm, id: LLM10 }
+assertsKnownGap: true
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+  resources:
+    - { id: doc-public, kind: document, externalId: doc-public-ratelimit }
+  grants:
+    - {
+        principalId: alice,
+        resourceId: doc-public,
+        relation: viewer,
+        source: manual,
+      }
+  rebac:
+    schema: |
+      namespace document {
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
+        permission view = viewer | editor | owner
+        permission edit = editor | owner
+      }
+    tuples: []
+  adcTokens:
+    - id: t1
+      via: mint
+      mint:
+        {
+          subjectPrincipalId: alice,
+          caveats: [{ kind: scope, triples: [["document", "*", "view"]] }],
+        }
+    - id: t2
+      via: mint
+      mint:
+        {
+          subjectPrincipalId: alice,
+          caveats: [{ kind: scope, triples: [["document", "*", "view"]] }],
+        }
+    - id: t3
+      via: mint
+      mint:
+        {
+          subjectPrincipalId: alice,
+          caveats: [{ kind: scope, triples: [["document", "*", "view"]] }],
+        }
+  adcRevoked: []
+tools: []
+adversary:
+  actingPrincipalId: alice
+  steps: []
+expected:
+  cells:
+    - layer: identity-graph
+      outcome: missed
+      rationale: >-
+        Three ordinary mints succeed (confirming the bounding mechanism
+        itself works, well under any rate limit) — the coverage claim here
+        is diagnostic/documentary, not a live-triggered failure: a real
+        remediation flow issuing many wildcard-scoped mints in a burst (or
+        a revocation-response flow retrying failed RBA calls) can exhaust
+        RBA's 20/min POST /scope budget well before the mint service's own,
+        looser 60/min default, turning what looks like an ADC-side problem
+        into an RBA-side availability coupling neither project's own
+        single-layer test suite has any way to notice. Filed on
+        identity-graph rather than adc: this scenario has no adversary
+        steps at all (it never calls a tool, so the adc column has no
+        verdict to claim anything against — src/scoring/score.ts correctly
+        rejects a claim with nothing empirical behind it), and none of
+        Principal-Graph's seven PolicyRule kinds has anything to say about
+        an RBA-side rate-limit coupling either, so 'missed' here means
+        exactly that: nothing in the assembled stack's own diagnostic
+        surface would notice this operational risk. This range's own
+        reading of both real source files (services/mint/src/bounding.ts's
+        POST /scope call site; relationship-based-authorization/src/api/
+        server.ts:1727-1728's 20/min checkBatchRateLimit) is the mechanism
+        through which this would actually be caught operationally (a
+        monitoring alert on mint 502/429 rates), not something this corpus
+        forces to fail live.

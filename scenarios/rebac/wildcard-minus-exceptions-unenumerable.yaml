@@ -1,0 +1,83 @@
+id: wildcard-minus-exceptions-unenumerable
+title: list-users honestly refuses a wildcard-minus-concrete-exceptions subject set
+summary: >-
+  org.view is granted to every user (a wildcard subject, D-171) minus a
+  concretely-banned user — a genuinely co-finite subject set. POST
+  /list-users refuses to enumerate it at all
+  ({unenumerable:true, reason:"wildcardMinusConcreteExceptions"}) rather
+  than returning an incomplete or wrong list — an honest admission, not a
+  bug, but one this scenario checks a caller can't mistake for "nobody has
+  access."
+taxonomy:
+  - { source: gaps/rba, id: listusers-wildcard-unenumerable-refusal }
+stack:
+  principals:
+    # Every scenario needs a bound acting principal, but this scenario's real claim is the
+    # rebacListUsers assertion below (no adversary steps at all). Also used for the cell's
+    # own expected.rebac.check below — see that field's own doc comment for why it's a
+    # minimal structural check, not the finding.
+    - { id: nobody, kind: agent, externalId: unused }
+  resources:
+    - { id: acme-org, kind: org, externalId: acme-org }
+  grants: []
+  rebac:
+    schema: |
+      namespace org {
+        relation member: user | user:* | group#member
+        relation banned: user
+        permission view = member - banned
+      }
+    tuples:
+      - {
+          objectNs: org,
+          objectId: acme-org,
+          relation: member,
+          subjectNs: user,
+          subjectId: "*",
+        }
+      - {
+          objectNs: org,
+          objectId: acme-org,
+          relation: banned,
+          subjectNs: user,
+          subjectId: mallory,
+        }
+  adcTokens: []
+tools: []
+adversary:
+  actingPrincipalId: nobody
+  steps: []
+expected:
+  # A minimal, deliberately unrelated /check — src/scoring/score.ts rejects a cell claim
+  # with no underlying empirical verdict outright (never leaves one unvalidated), and this
+  # is the only mechanism in this codebase that produces one for the rebac column at all
+  # (expected.rebac.check.subjectPrincipalId always resolves through rbaSubject(), always
+  # namespace 'principal' — it cannot meaningfully exercise THIS scenario's own
+  # wildcard/subtraction mechanism, which is deliberately typed against namespace 'user' to
+  # mirror Zanzibar's own generic convention; making it resolve through 'principal' instead
+  # would just move the identical namespace problem this scenario exists to sidestep). See
+  # the cell's own rationale for why this check itself is not the finding.
+  rebac:
+    check:
+      { subjectPrincipalId: nobody, relation: view, objectResourceId: acme-org }
+    allowed: false
+  rebacListUsers:
+    objectResourceId: acme-org
+    relation: view
+    expectUnenumerable: true
+  cells:
+    - layer: rebac
+      outcome: observed-only
+      rationale: >-
+        This cell's own /check (nobody, an intentionally disconnected
+        principal never granted anything on acme-org, correctly denied
+        view) is a minimal structural assertion, needed only to give the
+        rebac column an actual empirical verdict to validate a claim
+        against at all — it is NOT this scenario's real finding, and is
+        unrelated to the wildcard/subtraction mechanism the summary
+        describes (nobody was never in scope of that mechanism regardless
+        of any wildcard at all). The real coverage claim is the
+        rebacListUsers assertion above: list-users genuinely refuses to
+        enumerate a wildcard-minus-concrete-exceptions subject set rather
+        than silently under- or over-reporting it — RBA correctly surfaces
+        the ambiguity rather than hiding it, without gating anything live.

@@ -1,0 +1,97 @@
+# OWASP Top 10 for LLM Applications (2025 / v2.0), published 2024-11-18.
+# https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/
+# Verbatim category names and numbering — this range does not renumber or
+# relabel these. Not every category has a scenario (several, e.g. LLM08
+# Vector and Embedding Weaknesses, are out of scope for a tool-calling/
+# authorization range and are recorded with requiresScenario:false rather
+# than silently omitted — see README's own "no silent caps" discipline).
+source: owasp-llm
+rows:
+  - id: LLM01
+    name: "LLM01:2025 Prompt Injection"
+    summary: >-
+      Untrusted input steers the model into actions or output the deployer
+      didn't intend — the direct target of the broker's taint watermark and
+      the injection corpus (Taint-Tracked-Tool-Broker) this range assembles
+      alongside identity/authorization controls.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: true
+  - id: LLM02
+    name: "LLM02:2025 Sensitive Information Disclosure"
+    summary: >-
+      A model or the tools it calls leak private/sensitive data — this
+      range's rows model it as a broker EXFIL sink combined with
+      readsPrivateData ("lethal trifecta") and as an over-broad ReBAC/ADC
+      grant reaching a resource it shouldn't.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: true
+  - id: LLM03
+    name: "LLM03:2025 Supply Chain"
+    summary: >-
+      Compromised models, data, or plugins. Out of scope for this range: it
+      exercises runtime authorization/taint controls over an already-running
+      agent, not artifact/dependency provenance.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: false
+  - id: LLM04
+    name: "LLM04:2025 Data and Model Poisoning"
+    summary: >-
+      Training-time poisoning. Out of scope for this range for the same
+      reason as LLM03 — no training pipeline exists anywhere in the four
+      assembled projects.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: false
+  - id: LLM05
+    name: "LLM05:2025 Improper Output Handling"
+    summary: >-
+      Downstream systems trust LLM output without validation. Modeled here
+      as the broker's quarantine/summarize() path and its documented
+      provenance-spoofing residual (GAPS.md #4 in taxonomy/gaps/tttb.yaml).
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: true
+  - id: LLM06
+    name: "LLM06:2025 Excessive Agency"
+    summary: >-
+      The agent holds more permission, capability, or autonomy than its task
+      needs. This is the identity/authorization half of the range's whole
+      reason for existing — over-broad delegation, stale grants, and
+      confused-deputy rows (taxonomy/identity-controls.yaml) all instantiate
+      this category concretely, in a way no single project's own corpus can.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: true
+  - id: LLM07
+    name: "LLM07:2025 System Prompt Leakage"
+    summary: >-
+      Modeled as broker markSystemPromptExposure()/markContextExposure() and
+      as MITRE ATLAS AML.T0056 (Extract LLM System Prompt) /
+      AML.T0069.002 — a channel the broker can track only if the
+      integrator calls the escape hatch (TTTB GAPS.md #1).
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: true
+  - id: LLM08
+    name: "LLM08:2025 Vector and Embedding Weaknesses"
+    summary: >-
+      RAG/embedding-store attacks. Out of scope: no vector store exists
+      anywhere in the four assembled projects.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: false
+  - id: LLM09
+    name: "LLM09:2025 Misinformation"
+    summary: >-
+      Confident, false model output. Out of scope for a control-coverage
+      range in the sense this project measures — none of the four assembled
+      projects can judge output truthfulness; the closest in-scope proxy is
+      the broker's checkFieldGrounding() (quarantine-output grounding, not
+      general misinformation) and is filed under LLM05 instead.
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: false
+  - id: LLM10
+    name: "LLM10:2025 Unbounded Consumption"
+    summary: >-
+      Resource/cost exhaustion via unbounded model or tool use. Partially
+      in scope via RBA's own documented rate limits (20/min writes,
+      200/min reads) and the mint service's MINT_RATE_LIMIT_PER_MINUTE —
+      modeled as an availability row, not a security-block row (see
+      taxonomy/gaps/rba.yaml's Redis-outage entry).
+    reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    requiresScenario: true
