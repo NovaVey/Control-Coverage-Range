@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write # needed only by the "Commit updated coverage baseline" step below, which
+  # runs on push-to-main only — a pull_request run never gets write access to push, since
+  # GITHUB_TOKEN for a pull_request event is always read-only regardless of this setting.
+
 jobs:
   range:
     runs-on: ubuntu-latest
@@ -69,6 +74,27 @@ jobs:
 
       - name: Check for coverage regressions against the committed baseline
         run: npm run range:check-regression -- --out .range-out
+
+      # range:check-regression (src/cli/index.ts's cmdCheckRegression) already writes its
+      # own updated baseline/coverage-matrix.snapshot.json into this checkout on every run
+      # that isn't itself a regression — but a checkout is thrown away when the job ends, so
+      # without this step nothing ever actually reaches the repository: every future run,
+      # PR or push alike, would find "no baseline yet" again and silently accept whatever
+      # the corpus currently produces, never comparing against real history. This is the
+      # one place that gap closes — push-to-main only, since a PR should be judged against
+      # main's own last-known-good baseline, never allowed to quietly rewrite it itself.
+      - name: Commit updated coverage baseline (push to main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add baseline/coverage-matrix.snapshot.json
+          if git diff --cached --quiet; then
+            echo "Baseline unchanged."
+          else
+            git commit -m "chore: update coverage-matrix baseline [skip ci]"
+            git push
+          fi
 
       - name: Every GAPS.md-derived taxonomy row has an asserting scenario
         run: npm run range:gaps-coverage

@@ -1,18 +1,25 @@
 # Coverage-matrix baseline
 
-`coverage-matrix.snapshot.json` (not yet present — see below) is the
-regression gate's own baseline: `npm run range:check-regression` diffs
-the current run's matrix against it and fails on any cell moving to a
-strictly worse outcome (`src/report/baseline.ts`'s `findRegressions()`),
-except a cell newly marked `assertsKnownGap` or one that was already
-flagged invalid in the prior baseline.
+`coverage-matrix.snapshot.json` is the regression gate's own baseline:
+`npm run range:check-regression` diffs the current run's matrix against it
+and fails on any cell moving to a strictly worse outcome
+(`src/report/baseline.ts`'s `findRegressions()`), except a cell newly
+marked `assertsKnownGap` or one that was already flagged invalid in the
+prior baseline.
 
-No baseline is committed yet — this repository was built in an
-environment with no running docker daemon, so no scenario was ever run
-end-to-end against the real assembled stack before this initial commit
-(see GAPS.md #4). The first successful CI run against this corpus
-(`.github/workflows/range.yml`) establishes `coverage-matrix.snapshot.json`
-for real, and every run after that compares against it. `npm run
-range:check-regression` itself handles the "no baseline yet" case
-gracefully — it saves the current run as the baseline rather than
-failing.
+This file only ever moves forward via CI itself, never a manual edit:
+`.github/workflows/range.yml`'s "Commit updated coverage baseline" step
+commits whatever `range:check-regression` wrote into this checkout back to
+`main`, but only on a `push` to `main` — never on a pull request, which is
+judged against main's own last-known-good baseline and must never be
+allowed to quietly rewrite it itself. (An earlier version of this
+workflow ran `range:check-regression` without that commit-back step at
+all — every run, PR or push alike, found "no baseline yet" in its own
+disposable checkout and silently accepted whatever the corpus produced,
+never actually comparing against history. Fixed once this repository's
+own first real CI run — see GAPS.md #4 — was already green, which is
+exactly the kind of gap this project exists to catch, applied to itself.)
+`npm run range:check-regression` itself still handles a genuinely missing
+baseline gracefully (saves the current run rather than failing) — that
+path now only ever fires for a fork or a fresh clone with no CI history
+yet, not for this repository's own `main`.
