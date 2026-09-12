@@ -87,15 +87,17 @@ export class BrokerSession {
     "broker-facts" | "resource-scoped"
   >();
   private readonly scenario: Scenario;
-  /** Keyed by resource externalId (what a resource-scoped call's own args actually name,
-   * e.g. args.resourceId: "prod-config") — used by wrapResourceScoped() to translate that
-   * raw externalId into the same scoped+sanitized RBA object id
+  /** Keyed by stack.resources[].id (the scenario-local reference id every other
+   * resourceId-shaped scenario field uses — see expected.rebac.check's own doc comment:
+   * "reference stack.principals[]/resources[].id") — what a resource-scoped call's own args
+   * actually name, e.g. args.resourceId: "prod-config". Used by wrapResourceScoped() to
+   * translate that id into the same scoped+sanitized RBA object id
    * (src/scenario/identifiers.ts's rbaObject()) a `scope` caveat naming the identical
    * resource was resolved to at mint time (see run-scenario.ts's resolveScopeCaveats()).
    * Without this, verify()'s own facts.resourceId would never match the token's embedded
    * caveat, and every resource-scoped call would deny with ADC_SCOPE regardless of whether
    * the grant genuinely exists. */
-  private readonly resourcesByExternalId = new Map<
+  private readonly resourcesById = new Map<
     string,
     { kind: string; source: string; externalId: string }
   >();
@@ -139,7 +141,7 @@ export class BrokerSession {
     this.revokedHashesForResourceScoped = opts.revokedHashes;
     this.scenario = scenario;
     for (const r of scenario.stack.resources) {
-      this.resourcesByExternalId.set(r.externalId, r);
+      this.resourcesById.set(r.id, r);
     }
 
     for (const spec of scenario.tools) {
@@ -227,11 +229,11 @@ export class BrokerSession {
             `resource-scoped call to "${gated.name}": args.${cfg.resourceIdArg} must be a string resourceId`,
           );
         }
-        // Translate the call's own externalId-shaped resourceId into the identical scoped
-        // RBA object id a `scope` caveat naming this resource was resolved to at mint time
-        // (run-scenario.ts's resolveScopeCaveats()) — see this.resourcesByExternalId's own
-        // doc comment for why an untranslated resourceId would always deny.
-        const resource = this.resourcesByExternalId.get(rawResourceId);
+        // Translate the call's own stack.resources[].id-shaped resourceId into the identical
+        // scoped RBA object id a `scope` caveat naming this resource was resolved to at mint
+        // time (run-scenario.ts's resolveScopeCaveats()) — see this.resourcesById's own doc
+        // comment for why an untranslated resourceId would always deny.
+        const resource = this.resourcesById.get(rawResourceId);
         if (!resource) {
           throw new Error(
             `resource-scoped call to "${gated.name}": args.${cfg.resourceIdArg} "${rawResourceId}" references no declared resource`,
