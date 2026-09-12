@@ -144,7 +144,6 @@ export class BrokerSession {
 
     for (const spec of scenario.tools) {
       const raw = buildToolExecutor(spec);
-      const wrappedByBroker = this.broker.wrap(raw);
 
       if (spec.adcGate === "broker-facts") {
         this.adcGateKind.set(spec.name, "broker-facts");
@@ -153,10 +152,15 @@ export class BrokerSession {
           getToken: () => this.currentAdcToken,
           verifyOptions: { revokedHashes: opts.revokedHashes },
         };
-        this.wrapped.set(
-          spec.name,
-          wrapWithAdcGate(this.broker, wrappedByBroker, adcOpts),
-        );
+        // wrapWithAdcGate() calls broker.wrap(executor) itself (gate.ts: `const gated =
+        // broker.wrap(executor)`) — passing it an ALREADY-wrapped executor (this.broker.wrap(raw))
+        // would register the wrapped executor under the same tool name a second time
+        // (TTTB's own register()/wrap(): `this.tools.set(tool.name, tool)`), so calling the
+        // resulting executor's own execute() recurses into itself via broker.call() before the
+        // first invocation ever returns — a genuine ReentrantCallError, confirmed empirically
+        // (this was earlier-token-replay's actual failure, not a real ADC/broker finding).
+        // raw (never separately wrapped) is the correct, single wrap here.
+        this.wrapped.set(spec.name, wrapWithAdcGate(this.broker, raw, adcOpts));
       } else if (spec.adcGate === "resource-scoped") {
         this.adcGateKind.set(spec.name, "resource-scoped");
         if (
@@ -168,16 +172,19 @@ export class BrokerSession {
             `tool "${spec.name}": adcGate:'resource-scoped' requires adcResourceKind/adcRelation/adcResourceIdArg`,
           );
         }
+        // wrapResourceScoped() does NOT call broker.wrap() itself — it calls gated.execute()
+        // directly (see its own doc comment) — so it needs the already-wrapped executor here,
+        // unlike the broker-facts branch above.
         this.wrapped.set(
           spec.name,
-          this.wrapResourceScoped(wrappedByBroker, {
+          this.wrapResourceScoped(this.broker.wrap(raw), {
             resourceKind: spec.adcResourceKind,
             relation: spec.adcRelation,
             resourceIdArg: spec.adcResourceIdArg,
           }),
         );
       } else {
-        this.wrapped.set(spec.name, wrappedByBroker);
+        this.wrapped.set(spec.name, this.broker.wrap(raw));
       }
     }
   }

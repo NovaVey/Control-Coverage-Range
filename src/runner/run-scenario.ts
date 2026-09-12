@@ -206,7 +206,18 @@ export async function runScenario(
     ...grantsToRebacTuples(scenario),
     ...scopeExplicitTuples(scenario, scenario.stack.rebac.tuples),
   ];
-  for (const t of tuples) await conn.rba.writeTuple(t);
+  // One writeTuple() call per tuple hit RBA's own real, documented 20/min POST /tuples
+  // budget within a single multi-scenario CI run (confirmed empirically: a scenario with a
+  // few dozen tuples exhausted it outright, HTTP 429). POST /tuples/batch exists precisely
+  // for this — the same 20/min ceiling but up to 50 tuples per request ("50× more tuple
+  // writes/minute, not a loosened write budget," per RBA's own route comment) — so this
+  // range now batches, chunked at RBA's own TUPLE_BATCH_MAX_SIZE (50).
+  const RBA_TUPLE_BATCH_MAX_SIZE = 50;
+  for (let i = 0; i < tuples.length; i += RBA_TUPLE_BATCH_MAX_SIZE) {
+    await conn.rba.writeTuplesBatch(
+      tuples.slice(i, i + RBA_TUPLE_BATCH_MAX_SIZE),
+    );
+  }
 
   // 3. ADC: mint every declared token (real HTTP mint, or offline via @adc/core directly)
   // then revoke whichever ones the scenario declares revoked, in that order — a

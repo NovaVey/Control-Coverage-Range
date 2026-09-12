@@ -137,10 +137,43 @@ export class RbaClient {
     return this.request("POST", "/tuples", tuple);
   }
 
-  async writeTuplesBatch(
-    tuples: TupleWrite[],
-  ): Promise<{ results: unknown[] }> {
-    return this.request("POST", "/tuples/batch", { tuples });
+  /**
+   * POST /tuples/batch — up to 50 tuples per request against the identical 20/min budget
+   * `writeTuple()`'s own `POST /tuples` uses (tupleBatchRateLimit, a separate bucket from
+   * writeRateLimit but the same ceiling — "50× more tuple writes/minute, not a loosened
+   * write budget," per that route's own comment). Always HTTP 200 at the batch level even
+   * when every item failed its own validation (RBA's own documented design: a batch is a
+   * request-level success whose individual items can still fail, the same way a `/check`
+   * returning `allowed: false` is a successful answer) — so unlike writeTuple(), a failure
+   * here is never a thrown-from-request()'s-!res.ok HTTP error; it's inspected per item and
+   * raised here instead, aggregating every failed item (not just the first) so a scenario
+   * with several bad tuples gets one diagnostic naming all of them, not a fix-one-rerun loop.
+   */
+  async writeTuplesBatch(tuples: TupleWrite[]): Promise<void> {
+    if (tuples.length === 0) return;
+    const { results } = await this.request<{
+      results: Array<
+        TupleWrite & {
+          token?: string;
+          created?: boolean;
+          error?: { code: string; message: string };
+        }
+      >;
+    }>("POST", "/tuples/batch", { tuples });
+    const failed = results.filter((r) => r.error !== undefined);
+    if (failed.length > 0) {
+      const detail = failed
+        .map(
+          (r) =>
+            `${r.objectNs}:${r.objectId}#${r.relation}@${r.subjectNs}:${r.subjectId} — ${r.error!.code}: ${r.error!.message}`,
+        )
+        .join("; ");
+      throw new RbaError(
+        200,
+        "tuple_batch_item_failed",
+        `${failed.length}/${results.length} tuple(s) in batch write failed: ${detail}`,
+      );
+    }
   }
 
   async deleteTuple(
