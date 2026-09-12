@@ -1,0 +1,155 @@
+id: stale-grant-abuse
+title: A delegation token outlives the grant it was minted against
+summary: >-
+  Carol genuinely holds `editor` on the production deploy config when she
+  mints a point-scoped ADC token (POST /scope's real bounding check passes).
+  Her access is then revoked — in both Principal-Graph's grant_edge and the
+  mirrored RBA tuple — the way a real offboarding/incident-response flow
+  would do it. Nobody tells ADC: @adc/core's verify() is fully offline and
+  never re-consults RBA/Principal-Graph at verify time (only at mint time),
+  and the mint service's own revocation list was never updated either
+  (that requires an explicit POST /revoke this scenario deliberately never
+  calls, modeling the realistic case where offboarding a principal from
+  Principal-Graph/RBA and revoking their live ADC tokens are two separate,
+  easily-decoupled operational steps). This revocation also touches two
+  related, narrower Principal-Graph findings worth naming here rather than
+  in a scenario of their own: revokeGrantAfterMint's own UPDATE is a single
+  statement (this scenario never observes the crash-window risk
+  delegation-chain-non-atomic-write names for a real recordDelegationHop()
+  two-statement sequence — that risk needs an actual mid-write crash to
+  manifest, which a scripted, non-crashing scenario run cannot force to
+  happen; it is referenced here as a related, structurally-confirmed
+  finding, not something this run empirically triggers), and this
+  single-grant revocation never approaches revocation-guard-blast-radius-bypass's
+  own maxFraction/minPriorCount thresholds (checkBlastRadius only fires for
+  a full-inventory adapter revoking many grants in one run at once — this
+  scenario's direct-SQL single UPDATE bypasses that guard's own adapter
+  code path entirely, which is itself worth naming: this range's own
+  seeding mechanism has no blast-radius protection at all, unlike a real
+  adapter run).
+taxonomy:
+  - { source: identity, id: stale-grant-abuse }
+  - { source: mitre-atlas, id: AML.T0055 }
+  - { source: owasp-llm, id: LLM06 }
+  - { source: gaps/principal-graph, id: delegation-chain-non-atomic-write }
+  - { source: gaps/principal-graph, id: revocation-guard-blast-radius-bypass }
+assertsKnownGap: true
+stack:
+  principals:
+    - { id: carol, kind: human, externalId: carol }
+  resources:
+    - {
+        id: prod-config,
+        kind: document,
+        externalId: prod-config,
+        displayName: "Production deploy config",
+      }
+  grants:
+    - {
+        principalId: carol,
+        resourceId: prod-config,
+        relation: editor,
+        source: manual,
+      }
+  rebac:
+    schema: |
+      namespace org {
+        relation member: user | group#member
+        relation banned: user
+        permission view = member - banned
+      }
+      namespace group {
+        relation member: user | group#member
+        permission view = member
+      }
+      namespace folder {
+        relation parent: folder
+        relation owner: user
+        relation editor: user | group#member
+        relation viewer: user | group#member
+        relation sensitive_reviewer: user | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+        permission sensitive_review = (viewer | edit) & sensitive_reviewer
+      }
+      namespace document {
+        relation parent: folder
+        relation owner: user
+        relation editor: user | group#member
+        relation viewer: user | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+      }
+    tuples: []
+  adcTokens:
+    - id: carol-token
+      via: mint
+      mint:
+        subjectPrincipalId: carol
+        caveats:
+          - { kind: scope, triples: [["document", "prod-config", "edit"]] }
+  adcRevoked: []
+  revokeAfterMint:
+    - { principalId: carol, resourceId: prod-config, relation: editor }
+tools:
+  - name: deploy_config
+    capabilities: [write:fs]
+    irreversible: true
+    adcGate: resource-scoped
+    adcResourceKind: document
+    adcRelation: edit
+    adcResourceIdArg: resourceId
+    mockResult: "deployed"
+adversary:
+  actingPrincipalId: carol
+  steps:
+    - tool: deploy_config
+      args: { resourceId: prod-config, contents: "new production config" }
+      adcToken: carol-token
+expected:
+  adc:
+    result: allow
+  rebac:
+    check:
+      {
+        subjectPrincipalId: carol,
+        relation: edit,
+        objectResourceId: prod-config,
+      }
+    allowed: false
+  identityGraph:
+    violations: []
+  cells:
+    - layer: adc
+      outcome: missed
+      rationale: >-
+        @adc/core's verify() (packages/adc-core/src/token.ts) evaluates the
+        token's caveats entirely offline against local facts — it has no
+        live callback to RBA or Principal-Graph at all, and the mint
+        service's revocation list (@adc/revocation) was never told this
+        block should be revoked, since that requires an explicit POST
+        /revoke this scenario never issues. The token verifies exactly as
+        it did the moment it was minted, honestly, against access that no
+        longer exists.
+    - layer: rebac
+      outcome: observed-only
+      rationale: >-
+        Asked directly and independently, RBA correctly reports carol no
+        longer holds `edit` on prod-config (the tuple was deleted). The
+        information exists, live, in a real, reachable layer — nothing in
+        this stack's ADC-gated call path ever asks it this specific
+        question.
+    - layer: identity-graph
+      outcome: missed
+      rationale: >-
+        None of Principal-Graph's seven PolicyRule kinds (src/policies.ts)
+        detect "an allow event was recorded against a grant that was
+        already revoked" — stale-grant flags the OPPOSITE shape (a live
+        grant with no recent use), and on-behalf-of-escalation/no-trifecta/
+        the rest have nothing to say about this pattern either. The
+        broker's own real audit trail (via createPrincipalGraphAuditSink)
+        faithfully records carol's successful deploy_config call as an
+        'allow' event for the record — but nothing reads that record
+        against the fact the underlying grant_edge row is already
+        revoked_at-stamped. This is the cell nothing in the assembled
+        stack covers.

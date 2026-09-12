@@ -1,0 +1,12 @@
+[submodule "stack/principal-graph"]
+	path = stack/principal-graph
+	url = https://github.com/NovaVey/Principal-Graph.git
+[submodule "stack/relationship-based-authorization"]
+	path = stack/relationship-based-authorization
+	url = https://github.com/NovaVey/Relationship-Based-Authorization.git
+[submodule "stack/attenuated-delegation-chain"]
+	path = stack/attenuated-delegation-chain
+	url = https://github.com/NovaVey/Attenuated-Delegation-Chain.git
+[submodule "stack/taint-tracked-tool-broker"]
+	path = stack/taint-tracked-tool-broker
+	url = https://github.com/NovaVey/Taint-Tracked-Tool-Broker.git

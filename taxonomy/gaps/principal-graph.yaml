@@ -1,0 +1,109 @@
+# Rows found by reading principal-graph's own source directly (this project
+# does not publish its own GAPS.md/CAPABILITY-GAPS.md at the commit this
+# range vendors — see ARCHITECTURE.md) rather than restated from a doc that
+# doesn't exist yet. Each still carries a file:line citation, in the same
+# discipline relationship-based-authorization's own CAPABILITY-GAPS.md uses.
+source: gaps/principal-graph
+rows:
+  - id: no-write-http-api
+    name: No HTTP write route — seeding requires bypassing the deployed service
+    summary: >-
+      src/server.ts exposes exactly GET /health, /report, /report.json —
+      every write (principals, resources, grants, events, delegation chain
+      links) happens only via CLI adapter scripts talking directly to
+      Postgres (src/upsert.ts + per-adapter raw grant_edge SQL). This range
+      has no external-source adapter to plug into (mcp-config/github/aws/
+      workspace/postgres all model a specific real system, not a synthetic
+      scenario fixture) — so Control-Coverage-Range's own seeder
+      (src/adapters/principal-graph.ts) writes directly to the same
+      Postgres database the deployed report server reads from, replicating
+      upsert.ts's exact on-conflict pattern rather than reimplementing it
+      differently. Recorded here because it is exactly the kind of seam
+      this range exists to surface: nothing upstream of this range provides
+      a supported way to seed a synthetic identity graph for testing.
+    reference: "principal-graph/src/server.ts (route table); principal-graph/src/upsert.ts (ensurePrincipal/ensureResource); principal-graph/src/adapters/ (no generic/fixture adapter exists)"
+    stillOpen: true
+    requiresScenario: false
+  - id: delegation-chain-non-atomic-write
+    name: A crash between the event insert and the delegation_chain_link insert orphans the chain
+    summary: >-
+      recordDelegationMint()/recordDelegationHop() write the event row via
+      EventBatcher.append() and the delegation_chain_link row as a SEPARATE
+      second statement — never atomic with the event insert. A process
+      crash between the two leaves a real, hash-chained event with no
+      lineage row at all, silently breaking chain-intact verification for
+      that one link without any error at write time.
+    reference: "principal-graph/src/delegation-chain.ts:21-27 (recordDelegationMint/recordDelegationHop, two separate statements)"
+    stillOpen: true
+    requiresScenario: true
+  - id: revocation-guard-blast-radius-bypass
+    name: checkBlastRadius() never fires under dryRun, and force explicitly bypasses it
+    summary: >-
+      The blast-radius circuit breaker (checkBlastRadius(), default
+      maxFraction 0.5 / minPriorCount 5) exists specifically so a
+      truncated/misconfigured adapter source can't read as "everyone
+      genuinely lost access." It is scoped per-resource/per-principal, never
+      averaged across a whole run, and is a real, load-bearing safety
+      check — but `force: true` is an explicit, always-available bypass with
+      no additional confirmation step, and every adapter's dry-run branch
+      skips the call entirely (by design, but worth naming as the two ways
+      a mass-revocation still reaches Postgres unchecked).
+    reference: "principal-graph/src/revocation-guard.ts:85-99 (checkBlastRadius, force bypass)"
+    stillOpen: true
+    requiresScenario: true
+  - id: adc-graph-sink-event-shape-drift
+    name: "src/adapters/adc-graph-sink.ts was written blind against @adc/graph and its guessed event shape does not match the real one"
+    summary: >-
+      Principal-Graph ships a real, tested createAdcGraphSink() consumer
+      for @adc/graph's events — its own file header states plainly it was
+      "written from a prose description of @adc/graph's own worked
+      reference adapter... not copied from that reference implementation
+      itself... this repo has no dependency on, or visibility into,
+      @adc/graph's actual source" and asks a future integrator to "confirm
+      [the event shape] against the real package before wiring this in for
+      real." This range is the first place both real sources have been
+      read side by side to actually do that confirmation, and they do not
+      match: the real @adc/graph GraphEvent uses top-level fields
+      occurredAt/principal/resource/decision/denyReason/taintLabels/
+      reversible/requestDigest, while Principal-Graph's own AdcGraphEvent
+      guessed at/agent/blockId/outcome/reason/digest — disjoint field
+      names, not wire-compatible without a translation layer neither
+      project ships. A second, narrower, confirmed bug survives even after
+      translating field names correctly: createAdcGraphSink()'s handle()
+      hardcodes `ensurePrincipal(pool, { kind: 'agent', ...event.agent })`
+      regardless of the real event's own principal.kind — so a mint
+      event's actor (rootKeyPrincipal(), real kind:'service') gets recorded
+      in Principal-Graph as kind:'agent', misattributing the root minting
+      authority as an ordinary agent principal. This range's own bridge
+      (src/adapters/adc-graph-bridge.ts) supplies the missing field-name
+      translation so the two real projects can actually be wired together
+      at all, and documents the kind-misattribution residual as a
+      confirmed, not hypothetical, finding rather than silently working
+      around it by bypassing Principal-Graph's own shipped function.
+    reference: >-
+      principal-graph/src/adapters/adc-graph-sink.ts:10-25 (the file's own
+      disclosed provenance and its own request to confirm against the real
+      package); attenuated-delegation-chain/packages/adc-graph/src/event.ts
+      (the real GraphEvent shape); principal-graph/src/adapters/adc-graph-sink.ts:207
+      (the hardcoded kind:'agent')
+    stillOpen: true
+    requiresScenario: true
+  - id: opt-in-policies-not-run-by-default
+    name: Excessive-delegation and over-broad-root-token policies exist but are opt-in
+    summary: >-
+      src/policies.ts's default POLICIES array (run by `npm run
+      policy-check` / GET /report out of the box) is exactly three rules:
+      no-trifecta, stale-grant (admin/write relations, 30-day threshold),
+      on-behalf-of-escalation. Four more rules exist in the same file —
+      chain-intact, adapter-freshness, delegation-depth,
+      over-broad-root-token — but are deliberately left out of the default
+      set because each needs a deployment-specific threshold this project's
+      own adapters refuse to guess. Concretely: a deployment that never
+      configures delegation-depth/over-broad-root-token will get NO report
+      signal at all for a delegation chain of unbounded depth or a root
+      token scoped far beyond what its holder's own resource count would
+      suggest is reasonable — this is a genuine "assumed another layer had
+      it" seam, since neither ADC nor RBA runs an equivalent check either.
+    reference: "principal-graph/src/policies.ts:29-36 (all seven PolicyRule kinds), :118-122 (default POLICIES — only 3 of 7)"
+    stillOpen: true
+    requiresScenario: true

@@ -1,0 +1,75 @@
+# Rows pulled from relationship-based-authorization/docs/CAPABILITY-GAPS.md,
+# docs/CONSISTENCY.md, and direct source citations (that project's own
+# established discipline of file:line citations is preserved here). Most of
+# CAPABILITY-GAPS.md's ten brainstormed ideas are marked "built and shipped"
+# in that project's own doc — those are deliberately NOT rowed here (a
+# closed gap is not a coverage question this range needs to ask); only
+# genuinely open items, or closed items with a load-bearing residual worth
+# testing, appear below.
+source: gaps/rba
+rows:
+  - id: check-cache-cross-process-staleness
+    name: CHECK_CACHE_TTL_MS is bounded-staleness across processes, not real-time
+    summary: >-
+      The in-process check-result cache (default TTL 0, i.e. off) clears
+      immediately for writes made through the SAME process, but a write from
+      a different process or replica is invisible to a cache-enabled
+      instance until the TTL elapses — disclosed directly in
+      docs/CONSISTENCY.md. GET /watch (SSE over write_log) exists
+      specifically so a caller can react to a cross-process write instead of
+      guessing an interval, but nothing in this project (or ADC's mint
+      service, which only ever calls /scope and /check, never /watch)
+      actually consumes it. A scenario that revokes a tuple through one RBA
+      client while a cache-enabled second client keeps answering `allowed:
+      true` is a genuine, disclosed, still-open staleness window.
+    reference: "relationship-based-authorization/docs/CONSISTENCY.md:198-210; src/api/server.ts /watch route (unconsumed by any of the other three projects)"
+    stillOpen: true
+    requiresScenario: true
+  - id: certain-false-fail-closed-deny
+    name: An inconclusive deep/cyclic check denies rather than approximately-allows
+    summary: >-
+      certain:false on an allowed:false result means the depth ceiling
+      (CHECK_MAX_DEPTH, default 25) or the cycle guard cut a subtree off
+      without proving OR disproving it — a genuine, correct fail-closed
+      design choice (D-158/D-159 fixed the opposite, unsound behavior). The
+      coverage-relevant question this range asks is the availability side:
+      a legitimately-authorized subject whose real grant path requires
+      walking deeper than CHECK_MAX_DEPTH (a heavily-nested group chain, see
+      taxonomy/identity-controls.yaml's group-nesting-escalation row) is
+      denied access it actually holds, with no distinguishing signal
+      reaching the caller beyond an internal `certain` flag the HTTP API
+      does not even expose in /check's response today.
+    reference: "relationship-based-authorization/src/resolve/production/resolver.ts:497-549 (certain semantics); src/config/env.ts:105 (CHECK_MAX_DEPTH default 25); src/api/responses.ts (certain absent from /check response)"
+    stillOpen: true
+    requiresScenario: true
+  - id: listusers-wildcard-unenumerable-refusal
+    name: "list-users genuinely refuses one co-finite subject shape, rather than approximating it"
+    summary: >-
+      When a permission's true subject set is "every user except a
+      concretely-excluded few" (a wildcard grant minus concrete exceptions,
+      D-171), POST /list-users returns
+      `{unenumerable:true, reason:"wildcardMinusConcreteExceptions"}` instead
+      of either an incomplete list or a wrong empty one — an honest
+      admission of a genuinely co-finite answer, not a bug. Worth its own
+      row because a caller that treats an unenumerable response as "empty"
+      rather than "ask a different question" silently under-reports who can
+      reach a resource — exactly the kind of caller-side misuse this range's
+      own reasonMatches discipline exists to catch (see
+      src/scoring/score.ts).
+    reference: 'relationship-based-authorization/docs/CAPABILITY-GAPS.md "Public/wildcard subjects"; src/audit/list.ts:381-384'
+    stillOpen: false
+    requiresScenario: true
+  - id: write-rate-limit-20-per-minute
+    name: "POST /tuples is rate-limited to 20/min — a real, disclosed availability ceiling"
+    summary: >-
+      writeRateLimit caps POST /tuples (and DELETE /tuples, /tuples/batch)
+      at 20/min — disclosed in docs/CAPABILITY-GAPS.md as the reason the
+      project's own OpenFGA/SpiceDB benchmark had to run RBA at n=10 instead
+      of n=50. Relevant to this range's MITRE ATLAS AML.T0029 (Denial of AI
+      Service) row: a revocation-heavy remediation flow (e.g. bulk-revoking
+      a compromised delegation chain's tuples one at a time) can itself be
+      rate-limited, delaying the very remediation a security response
+      depends on.
+    reference: "relationship-based-authorization/src/api/server.ts:1144-1145,1429 (writeRateLimit); docs/CAPABILITY-GAPS.md (n=10 vs n=50 benchmark disclosure)"
+    stillOpen: true
+    requiresScenario: true

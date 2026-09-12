@@ -1,0 +1,160 @@
+# Rows pulled directly from taint-tracked-tool-broker/GAPS.md (as vendored at
+# stack/attenuated-delegation-chain's sibling checkout commit — see
+# ARCHITECTURE.md for why TTTB itself is an npm dependency, not a submodule).
+# Numbering matches that file's own section numbers so a reader can jump
+# straight to the source. Only rows load-bearing for an assembled-stack
+# question are included — most of GAPS.md's ~35 sections are pure
+# single-layer concerns already covered by TTTB's own corpus and have no
+# cross-layer question to ask, so are correctly left out (see this file's
+# own requiresScenario discipline: every row here DOES get a scenario,
+# nothing is listed just to pad the taxonomy).
+source: gaps/tttb
+rows:
+  - id: principal-feature-unreleased-at-pin-time
+    name: "BrokerOptions.principal (the identity axis GAPS.md #34 documents) is not in the published npm 1.4.0, and a plain git dependency cannot substitute for it either"
+    summary: >-
+      package.json's own declared version at the commit this range read
+      GAPS.md #34 from says "1.4.0" — identical to the version string
+      actually published to the npm registry — but the two are different
+      code: `npm view taint-tracked-tool-broker@1.4.0 gitHead` resolves to a
+      commit that predates BrokerOptions.principal/TaintContext.principal
+      entirely (confirmed directly: that field is simply absent from the
+      published package's own .d.ts), while the git repository's current
+      main branch (the commit this range's own adapters and
+      rbac-aware-policy-closes-identity-blindness scenario were built and
+      typechecked against) has the feature. A second, independently
+      confirmed problem surfaced trying the obvious fix: pinning
+      `"taint-tracked-tool-broker": "github:NovaVey/Taint-Tracked-Tool-Broker#<sha>"`
+      as a plain npm dependency installs but produces an UNBUILDABLE
+      package — npm's git-install path only runs a package's own `prepare`
+      lifecycle script (this project defines `prepack`, for `npm
+      pack`/publish, not `prepare`), and separately still applies
+      package.json's own `files` allowlist (`["dist", "docs", "examples",
+      "conformance", ...]`) when placing a git dependency into
+      node_modules — so a raw git checkout with no `dist/` built yet ends
+      up with no `src/` either, and nothing buildable ever reaches
+      node_modules at all. Confirmed directly (a real `npm install` left
+      node_modules/taint-tracked-tool-broker with no `src/` directory, only
+      the `files`-allowlisted docs/examples/conformance), not inferred.
+      This range's actual fix is a git submodule (stack/taint-tracked-tool-broker,
+      pinned to the same commit, built explicitly via
+      scripts/build-stack.mjs, imported by relative path via
+      src/adapters/tttb-lib.ts) — the identical pattern this range already
+      uses for Principal-Graph's own "no importable library surface" gap,
+      extended here for a different but related reason. Worth naming
+      plainly: this whole chain is a small instance of exactly the failure
+      class this project exists to catch, this time in the range's own
+      dependency choice rather than in the four assembled projects'
+      integration — an integrator trusting semver alone ("^1.4.0") would
+      have silently gotten different runtime behavior than this range's own
+      code was actually verified against, and the first, more obvious fix
+      (a plain git dependency) would have failed at install time in a way
+      that could easily be misread as an unrelated environment problem.
+    reference: >-
+      package.json (no taint-tracked-tool-broker npm dependency at all);
+      .gitmodules (stack/taint-tracked-tool-broker); src/adapters/tttb-lib.ts;
+      confirmed via `npm view taint-tracked-tool-broker@1.4.0 gitHead` vs the
+      git repository's current HEAD, and via a real `npm install` of a
+      github: dependency reference that left no src/ in node_modules
+    stillOpen: true
+    requiresScenario: false
+  - id: gap-01-untracked-context-channel
+    name: "GAPS.md #1 — Untracked context-injection channels"
+    summary: >-
+      The watermark is raised only by ToolCallBroker.call() observing a
+      tracked source-tool result. A poisoned tool/plugin description, an
+      untrusted system-prompt fragment, or pasted content never raises it
+      unless the integrator calls markContextExposure()/
+      markToolDescriptionExposure() explicitly. TTTB's own corpus asserts
+      this as a TRUE KNOWN GAP (untracked-tool-description-injection); this
+      range's scenario asks the harder assembled-stack question: does
+      ANY other layer (RBA check, ADC token scope, Principal-Graph policy
+      report) catch what the broker structurally cannot see.
+    reference: "taint-tracked-tool-broker/GAPS.md #1; corpus/cases.ts untracked-tool-description-injection (TRUE KNOWN GAP)"
+    stillOpen: true
+    requiresScenario: true
+  - id: gap-02-cross-turn-latent-influence
+    name: "GAPS.md #2 — Cross-turn / cross-session latent influence"
+    summary: >-
+      Under resetScope:'turn' (or 'turn-decay' past its window), content
+      read in turn N can shape a privileged call in a later turn with no
+      new exposure in between, once the turn boundary has cleared the
+      watermark. TTTB's own corpus asserts this as a TRUE KNOWN GAP
+      (cross-turn-latent-influence); this range checks whether the acting
+      principal's ADC token or an independent RBA check would deny the same
+      later call anyway, on identity/authorization grounds unrelated to
+      taint.
+    reference: "taint-tracked-tool-broker/GAPS.md #2; corpus/cases.ts cross-turn-latent-influence (TRUE KNOWN GAP)"
+    stillOpen: true
+    requiresScenario: true
+  - id: gap-12-agent-memory-cross-session-laundering
+    name: "GAPS.md #12 — Agent-memory cross-session laundering"
+    summary: >-
+      write_agent_memory (MUTATE) is correctly gated, but a separate
+      read_agent_memory tool not declared isSource re-introduces the exact
+      same untrusted text with zero taint on a later read — resetScope
+      provides no protection because the content never re-enters through a
+      tracked channel at all. TTTB's own corpus asserts this as a TRUE
+      KNOWN GAP (agent-memory-cross-session-laundering); mirrored here as
+      MITRE ATLAS AML.T0061 (LLM Prompt Self-Replication).
+    reference: "taint-tracked-tool-broker/GAPS.md #12; corpus/cases.ts agent-memory-cross-session-laundering (TRUE KNOWN GAP)"
+    stillOpen: true
+    requiresScenario: true
+  - id: gap-28-source-class-blindness
+    name: "GAPS.md #28 — Source-class blindness in defaultPolicy"
+    summary: >-
+      TaintLevel orders trust degree, not source class — an internal MCP
+      server and an arbitrary fetched web page collapse to the same
+      RAW_UNTRUSTED the moment either is read by an untrusted tool.
+      ProvenanceTag.sourceClass/TaintContext.sourceClasses exist, but
+      defaultPolicy never reads them by design (a custom PolicyFn may).
+      This range's custom broker policy (src/adapters/broker.ts) is exactly
+      such a custom PolicyFn, and this row asks whether wiring it to an
+      independent RBA check actually changes the outcome for a source-class
+      distinction defaultPolicy alone would ignore.
+    reference: "taint-tracked-tool-broker/GAPS.md #28; examples/source-class-policy.ts"
+    stillOpen: true
+    requiresScenario: true
+  - id: gap-34-identity-blind-policy
+    name: "GAPS.md #34 — PolicyFn is identity-blind by default"
+    summary: >-
+      A bare PolicyFn (including defaultPolicy) sees only (call, taint) —
+      nothing about WHO is asking — until BrokerOptions.principal /
+      TaintContext.principal is threaded through by a custom PolicyFn.
+      TTTB's own GAPS.md names this as the reason it deliberately does not
+      build delegation/identity verification itself. This row is the one
+      this whole range's broker adapter exists to close in practice: it
+      binds a real Principal-Graph/RBA identity as `principal` and consults
+      the real RBA check engine from a custom PolicyFn (examples/
+      rbac-policy.ts's pattern), and the scenario asks whether that closure
+      actually holds once wired to real, not stand-in, services.
+    reference: "taint-tracked-tool-broker/GAPS.md #34; examples/rbac-policy.ts"
+    stillOpen: false
+    requiresScenario: true
+  - id: gap-29-static-corpus-not-adaptive
+    name: "GAPS.md #29 — Static corpus does not generalize to an adaptive attacker"
+    summary: >-
+      Passing a fixed, hand-authored corpus demonstrates correctness against
+      those specific payloads, not robustness against an attacker who knows
+      the defense mechanism and crafts input specifically to exploit it.
+      This range's own scenario corpus inherits the identical limitation
+      one level up — GAPS.md #6 of this project's own GAPS.md
+      (taxonomy/gaps/control-coverage-range.yaml) names it plainly rather
+      than letting a green matrix be read as a robustness claim it isn't.
+    reference: "taint-tracked-tool-broker/GAPS.md #29"
+    stillOpen: true
+    requiresScenario: true
+  - id: gap-10-sink-misclassification
+    name: "GAPS.md #10 — Sink/capability misclassification is the integrator's responsibility"
+    summary: >-
+      A tool that actually mutates/exfiltrates but is registered with an
+      empty or wrong capabilities array is invisible to every policy check
+      — unverifiable by the library itself. This range's own tool
+      inventory (scenario `tools[]`) is exactly such an integrator
+      declaration; the row checks what happens when a scenario deliberately
+      under-declares a tool the way a real integration mistake would,
+      and confirms the doctor preflight (checkToolCatalog) would have
+      flagged it.
+    reference: "taint-tracked-tool-broker/GAPS.md #10; docs/classifying-tools.md; src/doctor.ts"
+    stillOpen: true
+    requiresScenario: true

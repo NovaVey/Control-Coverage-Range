@@ -1,0 +1,141 @@
+id: wildcard-scope-over-broad-delegation
+title: A wildcard-scoped delegation token reaches a document it was never bounded against
+summary: >-
+  Alice genuinely holds `viewer` on exactly one, low-sensitivity document.
+  She mints an ADC token with a wildcard scope caveat ["document","*","view"]
+  — the mint service's real POST /scope bounding confirms she holds `view`
+  on AT LEAST ONE document (true) and mints the token exactly as requested.
+  @adc/core's own verify() then matches that stored wildcard against ANY
+  resourceId a later call names — confirmed directly in its source
+  (caveats.ts). The token, minted honestly against one real grant, verifies
+  ALLOW for a second, unrelated, sensitive document she was never granted
+  anything on at all. A related, narrower RBA-only finding worth noting
+  here rather than in a scenario of its own: this range's own RBA
+  deployment runs with CHECK_CACHE_TTL_MS unset (cache disabled, the
+  default), so the rebac column's own /check call above always reads
+  live, uncached state — check-cache-cross-process-staleness's own window
+  (a cache-enabled RBA instance serving a stale allowed:true after a
+  cross-process write) does not manifest in this scenario as configured;
+  it is referenced here as a related, structurally-confirmed finding
+  (docs/CONSISTENCY.md's own disclosed bound) rather than something this
+  run empirically triggers.
+taxonomy:
+  - { source: identity, id: over-broad-delegation }
+  - { source: gaps/adc, id: wrapwithadcgate-cannot-verify-scope-caveats }
+  - { source: owasp-llm, id: LLM06 }
+  - { source: mitre-atlas, id: AML.T0012 }
+  - { source: gaps/rba, id: check-cache-cross-process-staleness }
+assertsKnownGap: true
+brokerPolicy: default
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+  resources:
+    - {
+        id: doc-public,
+        kind: document,
+        externalId: doc-public,
+        displayName: "Public roadmap",
+      }
+    - {
+        id: doc-secret,
+        kind: document,
+        externalId: doc-secret,
+        displayName: "Board acquisition memo",
+      }
+  grants:
+    - {
+        principalId: alice,
+        resourceId: doc-public,
+        relation: viewer,
+        source: manual,
+      }
+  rebac:
+    schema: |
+      namespace org {
+        relation member: user | group#member
+        relation banned: user
+        permission view = member - banned
+      }
+      namespace group {
+        relation member: user | group#member
+        permission view = member
+      }
+      namespace folder {
+        relation parent: folder
+        relation owner: user
+        relation editor: user | group#member
+        relation viewer: user | group#member
+        relation sensitive_reviewer: user | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+        permission sensitive_review = (viewer | edit) & sensitive_reviewer
+      }
+      namespace document {
+        relation parent: folder
+        relation owner: user
+        relation editor: user | group#member
+        relation viewer: user | group#member
+        permission edit = editor | owner | parent->edit
+        permission view = viewer | edit | parent->view
+      }
+    tuples: []
+  adcTokens:
+    - id: alice-token
+      via: mint
+      mint:
+        subjectPrincipalId: alice
+        caveats:
+          - { kind: scope, triples: [["document", "*", "view"]] }
+          - { kind: expires, at: 4102444800 } # 2100-01-01, far future — expiry isn't this scenario's subject
+  adcRevoked: []
+tools:
+  - name: view_document
+    capabilities: []
+    adcGate: resource-scoped
+    adcResourceKind: document
+    adcRelation: view
+    adcResourceIdArg: documentId
+    mockResult: "document contents"
+adversary:
+  actingPrincipalId: alice
+  steps:
+    - tool: view_document
+      args: { documentId: doc-secret }
+      adcToken: alice-token
+expected:
+  adc:
+    result: allow
+  rebac:
+    check:
+      {
+        subjectPrincipalId: alice,
+        relation: view,
+        objectResourceId: doc-secret,
+      }
+    allowed: false
+  cells:
+    - layer: adc
+      outcome: missed
+      rationale: >-
+        The token's stored triple is literally ["document","*","view"] —
+        @adc/core's evaluateCaveat() matches a stored wildcard resourceId
+        against any resourceId the call names (caveats.ts:255-257,
+        confirmed directly, not inferred), so verify() reports ok:true for
+        doc-secret exactly as it would for doc-public. Nothing in ADC's own
+        verification path re-consults RBA at verify time to check THIS
+        specific object — see taxonomy/identity-controls.yaml's
+        stale-grant-abuse row for the same root cause from a different
+        angle.
+    - layer: rebac
+      outcome: observed-only
+      rationale: >-
+        Asked directly, independent of ADC entirely, RBA's own /check
+        correctly reports alice does not hold `view` on doc-secret (no
+        tuple connects her to it, and document.view's own rewrite rule has
+        no path from doc-public to doc-secret). The information needed to
+        catch this exists in a real, live, reachable layer — it just was
+        never consulted for this specific call, because nothing in this
+        stack wires a per-call RBA check into the ADC-gated path at all.
+        This is exactly the "every layer assumed another layer had it"
+        failure this whole project exists to surface.
