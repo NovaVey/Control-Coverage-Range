@@ -72,8 +72,8 @@ adversary:
   steps: []
 expected:
   cells:
-    - layer: adc
-      outcome: observed-only
+    - layer: identity-graph
+      outcome: missed
       rationale: >-
         Three ordinary mints succeed (confirming the bounding mechanism
         itself works, well under any rate limit) — the coverage claim here
@@ -83,10 +83,18 @@ expected:
         RBA's 20/min POST /scope budget well before the mint service's own,
         looser 60/min default, turning what looks like an ADC-side problem
         into an RBA-side availability coupling neither project's own
-        single-layer test suite has any way to notice. 'observed-only'
-        because this range's own reading of both real source files
-        (services/mint/src/bounding.ts's POST /scope call site;
-        relationship-based-authorization/src/api/server.ts:1727-1728's
-        20/min checkBatchRateLimit) is the mechanism through which this
-        would be caught operationally (a monitoring alert on mint 502/429
-        rates), not something this corpus forces to fail live.
+        single-layer test suite has any way to notice. Filed on
+        identity-graph rather than adc: this scenario has no adversary
+        steps at all (it never calls a tool, so the adc column has no
+        verdict to claim anything against — src/scoring/score.ts correctly
+        rejects a claim with nothing empirical behind it), and none of
+        Principal-Graph's seven PolicyRule kinds has anything to say about
+        an RBA-side rate-limit coupling either, so 'missed' here means
+        exactly that: nothing in the assembled stack's own diagnostic
+        surface would notice this operational risk. This range's own
+        reading of both real source files (services/mint/src/bounding.ts's
+        POST /scope call site; relationship-based-authorization/src/api/
+        server.ts:1727-1728's 20/min checkBatchRateLimit) is the mechanism
+        through which this would actually be caught operationally (a
+        monitoring alert on mint 502/429 rates), not something this corpus
+        forces to fail live.

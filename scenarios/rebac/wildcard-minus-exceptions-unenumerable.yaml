@@ -22,7 +22,7 @@ stack:
   rebac:
     schema: |
       namespace org {
-        relation member: user | group#member
+        relation member: user | user:* | group#member
         relation banned: user
         permission view = member - banned
       }

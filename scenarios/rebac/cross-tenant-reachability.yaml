@@ -21,14 +21,14 @@ stack:
   rebac:
     schema: |
       namespace group {
-        relation member: user | group#member
+        relation member: principal | group#member
         permission view = member
       }
       namespace folder {
         relation parent: folder
-        relation owner: user
-        relation editor: user | group#member
-        relation viewer: user | group#member
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
         permission edit = editor | owner | parent->edit
         permission view = viewer | edit | parent->view
       }
@@ -37,7 +37,7 @@ stack:
           objectNs: group,
           objectId: acme-eng,
           relation: member,
-          subjectNs: user,
+          subjectNs: principal,
           subjectId: alice,
         }
       - {

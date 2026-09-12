@@ -23,14 +23,14 @@ stack:
   rebac:
     schema: |
       namespace group {
-        relation member: user | group#member
+        relation member: principal | group#member
         permission view = member
       }
       namespace folder {
         relation parent: folder
-        relation owner: user
-        relation editor: user | group#member
-        relation viewer: user | group#member
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
         permission edit = editor | owner | parent->edit
         permission view = viewer | edit | parent->view
       }
@@ -39,7 +39,7 @@ stack:
           objectNs: group,
           objectId: g0,
           relation: member,
-          subjectNs: user,
+          subjectNs: principal,
           subjectId: alice,
         }
       - {
@@ -252,7 +252,7 @@ stack:
         }
       - {
           objectNs: folder,
-          objectId: shared-docs-deep,
+          objectId: shared-docs,
           relation: viewer,
           subjectNs: group,
           subjectId: g26,
@@ -274,16 +274,23 @@ expected:
     allowed: false
   cells:
     - layer: rebac
-      outcome: missed
+      outcome: observed-only
       rationale: >-
         This is a genuine, legitimate grant (a real, uninterrupted
         membership chain 27 hops deep) that RBA's own CHECK_MAX_DEPTH=25
         ceiling correctly, safely fails closed on (D-158/D-159's own
         certain:false discipline) — reported to any HTTP caller as a plain
         allowed:false, identical in shape to a genuine deny, since `certain`
-        is never exposed over HTTP at all. 'missed' is used here in the
-        sense that nothing in this stack surfaces the DISTINCTION between
-        "denied because unauthorized" and "denied because inconclusive" —
-        an availability cost of a security-correct design, the mirror image
-        of every other 'missed' cell in this corpus (which are about a real
-        attack getting through, not a real grant being wrongly refused).
+        is never exposed over HTTP at all. Scored 'observed-only' per
+        src/scoring/score.ts's own binary model for this column (the check
+        genuinely denies, so wouldHaveCaught is true) — but this is not a
+        real attack this range is claiming coverage for; the actual finding
+        is narrower and belongs to the rationale, not the outcome label:
+        nothing in this stack surfaces the DISTINCTION between "denied
+        because unauthorized" and "denied because inconclusive," an
+        availability cost of a security-correct design, the mirror image of
+        every 'missed' cell in this corpus (which are about a real attack
+        getting through, not a real grant being wrongly refused). See
+        taxonomy/gaps/rba.yaml's certain-false-fail-closed-deny row for the
+        finding itself; this cell exists to prove the chain that triggers it
+        is genuinely connected end-to-end, not merely asserted.

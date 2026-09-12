@@ -1,7 +1,7 @@
 id: group-nesting-escalation
 title: Adding a principal to an inner group correctly propagates through nested membership
 summary: >-
-  RBA's nested-userset subject type (relation member: user | group#member)
+  RBA's nested-userset subject type (relation member: principal | group#member)
   allows unbounded-depth group nesting with no per-namespace recursion code
   at all. This scenario nests three levels deep — group:leaf has member
   alice; group:mid has member group:leaf#member; group:root has member
@@ -20,14 +20,14 @@ stack:
   rebac:
     schema: |
       namespace group {
-        relation member: user | group#member
+        relation member: principal | group#member
         permission view = member
       }
       namespace folder {
         relation parent: folder
-        relation owner: user
-        relation editor: user | group#member
-        relation viewer: user | group#member
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
         permission edit = editor | owner | parent->edit
         permission view = viewer | edit | parent->view
       }
@@ -36,7 +36,7 @@ stack:
           objectNs: group,
           objectId: leaf,
           relation: member,
-          subjectNs: user,
+          subjectNs: principal,
           subjectId: alice,
         }
       - {
