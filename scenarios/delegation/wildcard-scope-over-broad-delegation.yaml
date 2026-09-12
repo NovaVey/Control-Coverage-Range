@@ -53,29 +53,29 @@ stack:
   rebac:
     schema: |
       namespace org {
-        relation member: user | group#member
-        relation banned: user
+        relation member: principal | group#member
+        relation banned: principal
         permission view = member - banned
       }
       namespace group {
-        relation member: user | group#member
+        relation member: principal | group#member
         permission view = member
       }
       namespace folder {
         relation parent: folder
-        relation owner: user
-        relation editor: user | group#member
-        relation viewer: user | group#member
-        relation sensitive_reviewer: user | group#member
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
+        relation sensitive_reviewer: principal | group#member
         permission edit = editor | owner | parent->edit
         permission view = viewer | edit | parent->view
         permission sensitive_review = (viewer | edit) & sensitive_reviewer
       }
       namespace document {
         relation parent: folder
-        relation owner: user
-        relation editor: user | group#member
-        relation viewer: user | group#member
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
         permission edit = editor | owner | parent->edit
         permission view = viewer | edit | parent->view
       }

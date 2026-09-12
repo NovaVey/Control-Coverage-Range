@@ -80,11 +80,18 @@ worth stating precisely because the whole scoring model depends on it:
    scenario in a shared-Postgres CI run gets its own, non-colliding
    identity rows.
 2. **Publish RBA schema + write tuples** — one derived tuple per live
-   grant, using the *exact* mapping Principal-Graph's own real RBA exporter
+   grant, using the *same* mapping Principal-Graph's own real RBA exporter
    uses (`objectNs = resource.kind`, `objectId = "${source}:${externalId}"`,
-   `subjectNs = 'principal'`), so a tuple this range writes is
-   byte-for-byte what that real exporter would have produced for the
-   identical grant.
+   `subjectNs = 'principal'`), run through `rbaIdentifier()`'s sanitization
+   (`src/scenario/identifiers.ts`) — **not** byte-for-byte identical to
+   what that real exporter would have produced, because nothing could be:
+   RBA's own real identifier grammar rejects that exporter's own `:`-joined
+   output outright, a confirmed cross-project finding in its own right (see
+   `taxonomy/gaps/principal-graph.yaml`'s
+   `rba-exporter-identifier-grammar-mismatch` row). A tuple this range
+   writes is that mapping's output up to this sanitization, which is as
+   close to "byte-for-byte" as any tuple can actually get and still be
+   accepted.
 3. **Mint/attenuate ADC tokens** — `via: mint` goes through the real HTTP
    mint service (which itself calls RBA's real `POST /scope`/`POST /check`
    to bound the request); `via: offline` calls `@adc/core` directly, for a

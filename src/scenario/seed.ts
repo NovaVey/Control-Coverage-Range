@@ -1,14 +1,16 @@
 import type { Scenario } from "../types/scenario.js";
 import type { TupleWrite } from "../adapters/rba.js";
-import { scoped, rbaObject, rbaSubject } from "./identifiers.js";
+import { scoped, rbaObject, rbaSubject, rbaIdentifier } from "./identifiers.js";
 
 /** Mirrors Principal-Graph's own real RBA-exporter mapping (src/exporters/rba.ts,
- * confirmed directly against that file) exactly: objectNs = resource.kind, objectId =
+ * confirmed directly against that file): objectNs = resource.kind, objectId =
  * `${resource.source}:${externalId}`, relation unchanged, subjectNs = the fixed constant
- * 'principal', subjectId = `${principal.source}:${externalId}`. A tuple this range writes
- * for a seeded grant is therefore byte-for-byte what Principal-Graph's own real exporter
- * would have written for the identical grant, once externalIds are scoped identically
- * (src/scenario/identifiers.ts). */
+ * 'principal', subjectId = `${principal.source}:${externalId}` — up to rbaIdentifier()'s
+ * own sanitization (src/scenario/identifiers.ts), which is as close to that real exporter's
+ * output as a tuple can get and still be accepted by RBA's own real identifier grammar; see
+ * that function's own doc comment, and taxonomy/gaps/principal-graph.yaml's
+ * rba-exporter-identifier-grammar-mismatch row, for why an exact byte-for-byte copy is not
+ * possible here. */
 export function grantsToRebacTuples(scenario: Scenario): TupleWrite[] {
   const principalsById = new Map(
     scenario.stack.principals.map((p) => [p.id, p]),
@@ -41,7 +43,10 @@ export function grantsToRebacTuples(scenario: Scenario): TupleWrite[] {
  * Postgres-seeded principal/resource — one RBA instance shared by a whole CI run can't
  * have two scenarios' group-nesting fixtures collide on the same namespace:id pair. A
  * userset subject's own id (subjectRelation set) is scoped the same way its underlying
- * object would be, since it names another (objectNs, objectId) pair by construction. */
+ * object would be, since it names another (objectNs, objectId) pair by construction.
+ * Also run through rbaIdentifier() — see identifiers.ts's own doc comment — since a
+ * hand-authored externalId is just as likely to contain a `-` or other character RBA's
+ * own IDENTIFIER_PATTERN rejects as a derived one is. */
 export function scopeExplicitTuples(
   scenario: Scenario,
   tuples: TupleWrite[],
@@ -50,8 +55,10 @@ export function scopeExplicitTuples(
   // real wildcard grant into an ordinary, useless literal subject id named "<scenario>::*".
   return tuples.map((t) => ({
     ...t,
-    objectId: scoped(scenario, t.objectId),
+    objectId: rbaIdentifier(scoped(scenario, t.objectId)),
     subjectId:
-      t.subjectId === "*" ? t.subjectId : scoped(scenario, t.subjectId),
+      t.subjectId === "*"
+        ? t.subjectId
+        : rbaIdentifier(scoped(scenario, t.subjectId)),
   }));
 }

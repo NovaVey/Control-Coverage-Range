@@ -82,6 +82,20 @@ async function cmdRun(outDir: string): Promise<number> {
   for (const scenario of scenarios) {
     console.log(`▶ ${scenario.id}`);
     const result = await runScenario(scenario, conn);
+    // A step that threw something callStep() couldn't translate into a clean LayerVerdict
+    // (neither AdcGateError nor ToolCallBlockedError — a genuine bug, not a gated deny)
+    // leaves that step with an empty verdicts array. Surfacing it here is the difference
+    // between "the scorer picked an earlier step's verdict because this one recorded
+    // nothing" and a real, intentional outcome — silently falling through to
+    // lastMeaningfulVerdict()'s fallback would otherwise misreport a crash as a decision.
+    for (const step of result.steps) {
+      if (step.threw) {
+        anyInvalid = true;
+        console.error(
+          `  ✗ [step ${step.stepIndex}: ${step.tool}] threw ${step.threw.className}: ${step.threw.message}`,
+        );
+      }
+    }
     const cells = validateScenarioCells(scenario, result);
     for (const c of cells) {
       if (!c.valid) {

@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import { blockSignatureHash, decodeToken, encodeToken } from "@adc/core";
-import type { Scenario } from "../types/scenario.js";
+import type { Scenario, ScenarioCaveat } from "../types/scenario.js";
 import type { LayerVerdict, StepResult } from "../types/layers.js";
 import { RbaClient } from "../adapters/rba.js";
 import {
@@ -50,12 +50,58 @@ export interface ScenarioRunResult {
   rebacListUsersOk?: boolean;
 }
 
+/** A scope caveat's `triples[].resourceId` (docs: "resourceId may be '*'") names a resource
+ * the same way `stack.grants[]` does — by its logical `externalId` (e.g. "prod-config") —
+ * but the actual RBA tuple written for that resource's grant lives under `rbaObject()`'s
+ * scoped+sanitized id (src/scenario/identifiers.ts), never the bare externalId. Without
+ * this translation, the mint service's own real bounding (services/mint/src/bounding.ts)
+ * would ask RBA about a (resourceKind, "prod-config") pair no tuple was ever written under,
+ * and every point-scoped mint would fail `scope_not_granted` regardless of whether the
+ * grant genuinely exists. `'*'` passes through untouched — RBA's own wildcard sentinel, not
+ * a resource reference to resolve. */
+function resolveScopeCaveats(
+  scenario: Scenario,
+  resourcesByExternalId: Map<
+    string,
+    { kind: string; source: string; externalId: string }
+  >,
+  caveats: readonly ScenarioCaveat[],
+): ScenarioCaveat[] {
+  return caveats.map((c) => {
+    if (c.kind !== "scope") return c;
+    return {
+      ...c,
+      triples: c.triples.map(([resourceKind, resourceId, relation]) => {
+        if (resourceId === "*")
+          return [resourceKind, resourceId, relation] as [
+            string,
+            string,
+            string,
+          ];
+        const resource = resourcesByExternalId.get(resourceId);
+        if (!resource)
+          throw new Error(
+            `scenario ${scenario.id}: scope caveat references unknown resource externalId "${resourceId}"`,
+          );
+        return [resourceKind, rbaObject(scenario, resource).id, relation] as [
+          string,
+          string,
+          string,
+        ];
+      }),
+    };
+  });
+}
+
 async function mintScenarioTokens(
   scenario: Scenario,
   conn: RangeConnections,
 ): Promise<Map<string, string>> {
   const principalsById = new Map(
     scenario.stack.principals.map((p) => [p.id, p]),
+  );
+  const resourcesByExternalId = new Map(
+    scenario.stack.resources.map((r) => [r.externalId, r]),
   );
   const tokensById = new Map<string, string>();
   for (const spec of scenario.stack.adcTokens) {
@@ -72,7 +118,11 @@ async function mintScenarioTokens(
       const subject = rbaSubject(scenario, principal);
       const { token } = await conn.mint.mint({
         subject,
-        caveats: spec.mint.caveats,
+        caveats: resolveScopeCaveats(
+          scenario,
+          resourcesByExternalId,
+          spec.mint.caveats,
+        ),
       });
       tokensById.set(spec.id, token);
     } else {

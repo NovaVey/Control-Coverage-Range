@@ -36,9 +36,9 @@ stack:
   rebac:
     schema: |
       namespace document {
-        relation owner: user
-        relation editor: user | group#member
-        relation viewer: user | group#member
+        relation owner: principal
+        relation editor: principal | group#member
+        relation viewer: principal | group#member
         permission view = viewer | editor | owner
         permission edit = editor | owner
       }

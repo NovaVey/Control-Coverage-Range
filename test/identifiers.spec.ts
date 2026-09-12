@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { scoped, rbaSubject, rbaObject } from "../src/scenario/identifiers.js";
+import {
+  scoped,
+  rbaSubject,
+  rbaObject,
+  rbaIdentifier,
+} from "../src/scenario/identifiers.js";
 import {
   grantsToRebacTuples,
   scopeExplicitTuples,
@@ -61,13 +66,40 @@ describe("scoped()", () => {
   });
 });
 
+describe("rbaIdentifier", () => {
+  it("collapses every character outside RBA's own IDENTIFIER_PATTERN (a-z0-9_) to '_'", () => {
+    expect(rbaIdentifier("manual:stale-grant-abuse::prod-config")).toBe(
+      "manual_stale_grant_abuse__prod_config",
+    );
+  });
+
+  it("prefixes a result that wouldn't start with a lowercase letter", () => {
+    expect(rbaIdentifier("123-abc")).toBe("id_123_abc");
+  });
+
+  it("is idempotent on an already-legal identifier", () => {
+    expect(rbaIdentifier("already_legal_123")).toBe("already_legal_123");
+  });
+
+  it("hashes down (rather than truncates) an identifier over RBA's 63-char cap, so two long ids sharing a prefix can't collide", () => {
+    const a = rbaIdentifier(`manual:${"x".repeat(80)}::a-long-tail-one`);
+    const b = rbaIdentifier(`manual:${"x".repeat(80)}::a-long-tail-two`);
+    expect(a.length).toBeLessThanOrEqual(63);
+    expect(b.length).toBeLessThanOrEqual(63);
+    expect(a).not.toBe(b);
+  });
+});
+
 describe("rbaSubject/rbaObject", () => {
-  it("matches Principal-Graph's own RBA-exporter convention: principal ns, `${source}:${scopedExternalId}` id", () => {
+  it("matches Principal-Graph's own RBA-exporter convention up to rbaIdentifier()'s sanitization: principal ns, `${source}:${scopedExternalId}` id with every RBA-illegal character collapsed to '_'", () => {
     const s = scenario();
     const subject = rbaSubject(s, { source: "manual", externalId: "alice" });
+    // Raw would be "manual:ident-test::alice" (Principal-Graph's own identityRef()
+    // convention) — every ':'/'-' RBA's own IDENTIFIER_PATTERN rejects becomes '_'. See
+    // taxonomy/gaps/principal-graph.yaml's rba-exporter-identifier-grammar-mismatch row.
     expect(subject).toEqual({
       ns: "principal",
-      id: "manual:ident-test::alice",
+      id: "manual_ident_test__alice",
     });
   });
 
@@ -78,7 +110,10 @@ describe("rbaSubject/rbaObject", () => {
       source: "manual",
       externalId: "doc1",
     });
-    expect(object).toEqual({ ns: "document", id: "manual:ident-test::doc1" });
+    expect(object).toEqual({
+      ns: "document",
+      id: "manual_ident_test__doc1",
+    });
   });
 });
 
@@ -89,10 +124,10 @@ describe("grantsToRebacTuples", () => {
     expect(tuples).toEqual([
       {
         objectNs: "document",
-        objectId: "manual:ident-test::doc1",
+        objectId: "manual_ident_test__doc1",
         relation: "viewer",
         subjectNs: "principal",
-        subjectId: "manual:ident-test::alice",
+        subjectId: "manual_ident_test__alice",
       },
     ]);
   });
@@ -129,13 +164,13 @@ describe("grantsToRebacTuples", () => {
 });
 
 describe("scopeExplicitTuples", () => {
-  it('scopes both object and subject ids, but leaves the "*" wildcard sentinel untouched', () => {
+  it('scopes and sanitizes both object and subject ids, but leaves the "*" wildcard sentinel untouched', () => {
     const s = scenario();
     const scopedTuples = scopeExplicitTuples(s, s.stack.rebac.tuples);
     expect(scopedTuples).toEqual([
       {
         objectNs: "group",
-        objectId: "ident-test::g1",
+        objectId: "ident_test__g1",
         relation: "member",
         subjectNs: "user",
         subjectId: "*",

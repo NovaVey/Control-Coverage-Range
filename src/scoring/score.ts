@@ -95,8 +95,10 @@ function validateGatingLayer(
         return `${layer} did not require approval (denied=${verdict.denied})`;
       return undefined;
     case "missed":
-      if (verdict.denied || verdict.requiresApproval)
-        return `${layer} actually gated this call (denied=${verdict.denied}, requiresApproval=${verdict.requiresApproval}) — it was not missed`;
+      if (verdict.denied || verdict.requiresApproval) {
+        const code = (verdict.raw as { code?: string } | undefined)?.code;
+        return `${layer} actually gated this call (denied=${verdict.denied}, requiresApproval=${verdict.requiresApproval}${code ? `, code=${code}` : ""}${verdict.reason ? `, reason=${verdict.reason}` : ""}) — it was not missed`;
+      }
       return undefined;
     case "blocked-incidentally":
       if (!verdict.denied)
