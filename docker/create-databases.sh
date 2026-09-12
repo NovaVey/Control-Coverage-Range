@@ -8,7 +8,7 @@
 # part of either project's own compose file rather than reusing it verbatim.
 set -euo pipefail
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     CREATE DATABASE "${PRINCIPAL_GRAPH_DB:-principalgraph}";
     CREATE DATABASE "${RBA_DB:-authz_service}";
 EOSQL
