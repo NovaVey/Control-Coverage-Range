@@ -58,6 +58,13 @@ rows:
       github: dependency reference that left no src/ in node_modules
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A dependency-resolution/build-integrity finding about this range's own
+      packaging choice, not an attack technique — no adversary steps could
+      meaningfully demonstrate "the wrong npm version would have been
+      pinned." The actual fix (a git submodule, built explicitly via
+      scripts/build-stack.mjs) is verified structurally by that build
+      succeeding at all, not by a scenario run.
   - id: gap-01-untracked-context-channel
     name: "GAPS.md #1 — Untracked context-injection channels"
     summary: >-

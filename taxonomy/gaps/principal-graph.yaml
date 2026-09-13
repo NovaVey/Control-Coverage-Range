@@ -24,6 +24,14 @@ rows:
     reference: "principal-graph/src/server.ts (route table); principal-graph/src/upsert.ts (ensurePrincipal/ensureResource); principal-graph/src/adapters/ (no generic/fixture adapter exists)"
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A seeding-mechanism/infrastructure finding about how this range itself
+      gets test data into Principal-Graph, not an attack technique — there
+      is no adversary step sequence that could meaningfully demonstrate "no
+      HTTP write route exists." Every scenario in this corpus already
+      depends on the workaround this row describes (direct-to-Postgres
+      seeding) succeeding; the row exists to disclose that dependency, not
+      to be independently exercised by one more scenario on top of it.
   - id: delegation-chain-non-atomic-write
     name: A crash between the event insert and the delegation_chain_link insert orphans the chain
     summary: >-
@@ -143,3 +151,12 @@ rows:
       (IDENTIFIER_PATTERN, MAX_IDENTIFIER_LENGTH)
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      No in-corpus scenario can demonstrate this without reintroducing the
+      exact bug being described: every OTHER scenario needs its own
+      grant-derived RBA tuple writes to actually succeed against a real,
+      live RBA instance to be useful for anything else, so a scenario built
+      around deliberately tripping this mismatch would break the corpus
+      around it. test/rba-identifier-grammar.spec.ts proves the mismatch
+      directly and mechanically instead, against RBA's own real, vendored
+      identifier grammar — see this row's own summary for how.

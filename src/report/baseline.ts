@@ -9,6 +9,15 @@ export interface Regression {
   to: Outcome;
 }
 
+/** What actually gets persisted to baseline/coverage-matrix.snapshot.json — everything in
+ * MatrixSnapshot except `generatedAt`. That field lives happily in the per-run
+ * .range-out/coverage-matrix.json artifact (useful there for observability), but embedding
+ * it in the *baseline* file defeats the whole point of committing it: `generatedAt` is
+ * different on literally every run, so `git diff --cached --quiet` (the CI step that
+ * decides whether the baseline actually changed) would never be true and main would get a
+ * chore commit, with a diff dominated by a timestamp, on every single green push. */
+export type PersistedBaseline = Omit<MatrixSnapshot, "generatedAt">;
+
 /**
  * A change to any of the four assembled projects that reduces coverage fails CI — this
  * is that check. It never fires for a cell whose current claim is itself flagged
@@ -19,7 +28,7 @@ export interface Regression {
  * worse outcome than its last recorded baseline is a hard failure.
  */
 export function findRegressions(
-  baseline: MatrixSnapshot,
+  baseline: PersistedBaseline,
   current: MatrixSnapshot,
 ): Regression[] {
   const regressions: Regression[] = [];
@@ -52,11 +61,12 @@ export function findRegressions(
   return regressions;
 }
 
-export function loadBaseline(path: string): MatrixSnapshot | undefined {
+export function loadBaseline(path: string): PersistedBaseline | undefined {
   if (!existsSync(path)) return undefined;
-  return JSON.parse(readFileSync(path, "utf8")) as MatrixSnapshot;
+  return JSON.parse(readFileSync(path, "utf8")) as PersistedBaseline;
 }
 
 export function saveBaseline(path: string, snapshot: MatrixSnapshot): void {
-  writeFileSync(path, JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+  const persisted: PersistedBaseline = { rows: snapshot.rows };
+  writeFileSync(path, JSON.stringify(persisted, null, 2) + "\n", "utf8");
 }

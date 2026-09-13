@@ -18,6 +18,12 @@ rows:
     reference: "GAPS.md #1"
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A methodological limitation of the whole project (taxonomy coverage is
+      not the same claim as real-world coverage), not an attack technique —
+      there is no scenario shape that could assert "this taxonomy is
+      incomplete." Disclosure is the mitigation here; GAPS.md #1 is the
+      reader-facing version of this exact row.
   - id: scripted-adversary-is-not-a-real-model
     name: A scripted adversary measures a different thing than a live model does
     summary: >-
@@ -26,15 +32,22 @@ rows:
       TTTB's own injection corpus is fixed and deterministic: CI needs a
       stable, reproducible signal, and a live model's own variance would
       make the regression gate (src/report/baseline.ts) meaningless run to
-      run. adversary.mode:'live-model' exists and is documented
-      (docs/live-model-mode.md) precisely so this isn't silently
-      conflated with the scripted result — it answers "would a real,
-      unscripted model reach the same tool calls," a genuinely different
-      question than "does the stack correctly gate this exact call
-      sequence," and it is never used for regression gating.
-    reference: "GAPS.md #2; docs/live-model-mode.md"
+      run. adversary.mode:'live-model' exists in the schema precisely so
+      this isn't silently conflated with the scripted result — it would
+      answer "would a real, unscripted model reach the same tool calls," a
+      genuinely different question than "does the stack correctly gate this
+      exact call sequence" — and it is never wired to anything in this
+      build: no scenario in this corpus uses it, and it is never used for
+      regression gating.
+    reference: "GAPS.md #2"
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A methodological limitation of using a scripted adversary at all, not
+      a technique any one scenario demonstrates — "this corpus is
+      deterministic rather than model-driven" isn't a claim a scenario's
+      own cells could assert or refute. GAPS.md #2 is the reader-facing
+      disclosure this row restates in taxonomy form.
   - id: scenario-authorship-bias
     name: Whoever writes scenarios is biased toward ones their own stack passes
     summary: >-
@@ -45,14 +58,23 @@ rows:
       in taxonomy/gaps/*.yaml (pulled from each assembled project's own
       published gap analysis, not authored by this range) is REQUIRED to
       have at least one scenario that asserts the miss, checked mechanically
-      by test/gaps-coverage.spec.ts rather than left to reviewer
+      by src/taxonomy/gaps-coverage.ts's checkGapsCoverage()
+      (`npm run range:gaps-coverage`) rather than left to reviewer
       attention. This closes the "did we forget to write the scenario for
       an inconvenient finding" half of the bias; it does nothing for the
       harder half — a gap none of the four projects' own authors have
       published yet, that this range's own author also didn't think to add.
-    reference: "GAPS.md #3; test/gaps-coverage.spec.ts"
+    reference: "GAPS.md #3; src/taxonomy/gaps-coverage.ts"
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A bias inherent to who writes the scenarios, not a technique — there
+      is no scenario that could demonstrate "the author might have missed
+      something." The mechanical mitigation this row itself describes
+      (every gaps/*.yaml row requiring a scenario, or this exact field when
+      one genuinely isn't possible) is enforced by checkGapsCoverage()
+      directly, which is what actually closes the loop, not one more
+      scenario on top of it.
   - id: expectations-not-empirically-run-at-build-time
     name: This corpus's expected outcomes were derived by reading source, not by an empirical run
     summary: >-
@@ -70,6 +92,12 @@ rows:
     reference: "GAPS.md #4; .github/workflows/range.yml"
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A build-process disclosure about how this corpus's outcomes were
+      originally derived, not an attack technique — there is no scenario a
+      scenario-authoring process itself could be scored against. CI's own
+      real run against the real assembled stack is what actually validates
+      this row, not an additional scenario alongside it.
   - id: matrix-is-a-pinned-snapshot
     name: The matrix reflects one pinned commit of each sibling project, not their current HEAD
     summary: >-
@@ -85,3 +113,9 @@ rows:
     reference: "GAPS.md #5; .gitmodules"
     stillOpen: true
     requiresScenario: false
+    exemptionRationale: >-
+      A property of how this range is assembled (pinned submodule commits),
+      not an attack technique — no adversary steps could demonstrate "this
+      matrix might be stale relative to each project's current HEAD."
+      .gitmodules itself is the mechanically-checkable evidence for this
+      row, not a scenario.

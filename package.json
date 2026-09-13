@@ -69,6 +69,7 @@
     "@adc/broker": "file:./stack/attenuated-delegation-chain/packages/adc-broker",
     "@adc/graph": "file:./stack/attenuated-delegation-chain/packages/adc-graph",
     "@adc/revocation": "file:./stack/attenuated-delegation-chain/packages/adc-revocation",
+    "dotenv": "^17.4.2",
     "pg": "^8.23.0",
     "js-yaml": "^4.1.0",
     "zod": "^4.5.4"

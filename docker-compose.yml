@@ -66,6 +66,19 @@ services:
       PRINCIPAL_GRAPH_REPORT_API_KEY: ${PRINCIPAL_GRAPH_REPORT_API_KEY:?set PRINCIPAL_GRAPH_REPORT_API_KEY (see .env.example)}
     ports:
       - '8080:8080'
+    healthcheck:
+      # No curl/wget in this image (node:20-alpine, see Dockerfile) — node itself (with a
+      # stable global fetch since Node 18) is the one HTTP client guaranteed to be there.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   rba:
     build:
@@ -81,6 +94,17 @@ services:
       ADMIN_API_KEY: ${RBA_ADMIN_API_KEY:?set RBA_ADMIN_API_KEY, 32+ chars (see .env.example)}
     ports:
       - '3000:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # services/mint ships no Dockerfile of its own (confirmed: `find` turns up nothing —
   # see taxonomy/gaps/adc.yaml) — docker/mint.Dockerfile is this range's own, built
@@ -91,7 +115,7 @@ services:
       dockerfile: ../../docker/mint.Dockerfile
     depends_on:
       rba:
-        condition: service_started
+        condition: service_healthy
     environment:
       PORT: 3001
       MINT_ROOT_SECRET_KEY_B64: ${MINT_ROOT_SECRET_KEY_B64:?generate one — see .env.example}
@@ -100,13 +124,28 @@ services:
       MINT_ADMIN_API_KEY: ${MINT_ADMIN_API_KEY:?set MINT_ADMIN_API_KEY (see .env.example)}
       # Set deliberately (unlike a real deployment that might forget this one optional
       # var, per taxonomy/gaps/adc.yaml's graph-events-invisible-by-default row) so this
-      # range's own adc-graph bridge (src/adapters/adc.ts) has a real file to tail.
+      # range's own adc-graph bridge (src/adapters/adc.ts) has a real file to tail. A bind
+      # mount (not a named volume) backs /var/log/adc-mint, at the host path
+      # ./.range-mint-events — so the *host* process (this range's own CLI, reading
+      # MINT_GRAPH_EVENTS_PATH from .env/CI, never from this block) can actually read the
+      # same file mint is writing, rather than a path that only ever resolved inside this
+      # container. See .env.example / .github/workflows/range.yml for the host-side value.
       MINT_GRAPH_EVENTS_PATH: /var/log/adc-mint/events.ndjson
     volumes:
-      - range-mint-events:/var/log/adc-mint
+      - ./.range-mint-events:/var/log/adc-mint
     ports:
       - '3001:3001'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   range-postgres-data:
-  range-mint-events:

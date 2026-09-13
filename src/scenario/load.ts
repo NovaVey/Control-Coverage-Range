@@ -16,7 +16,13 @@ export function loadScenarioFile(path: string): Scenario {
 
 export function listScenarioFiles(scenariosDir: string): string[] {
   const out: string[] = [];
-  for (const entry of readdirSync(scenariosDir, { withFileTypes: true })) {
+  // Same reproducibility concern as taxonomy/load.ts's listYamlFiles: readdirSync's order
+  // is filesystem-dependent, not alphabetical, and this order flows straight into
+  // buildCoverageMatrix's multi-scenario cell merge — sort at every level so it doesn't.
+  const entries = readdirSync(scenariosDir, { withFileTypes: true }).sort(
+    (a, b) => a.name.localeCompare(b.name),
+  );
+  for (const entry of entries) {
     const full = join(scenariosDir, entry.name);
     if (entry.isDirectory()) out.push(...listScenarioFiles(full));
     else if (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml"))

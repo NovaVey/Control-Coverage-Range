@@ -47,10 +47,20 @@ function reasonMatches(
   return new RegExp(pattern).test(reason);
 }
 
+/** Absent `atStep`, scans from the last step backward and returns the first *observed*
+ * verdict — which in practice is always the last step, since an ALLOW is observed:true
+ * exactly like a deny is, silently requiring the decisive call to be the final one. A
+ * scenario whose actual claim is about an earlier step (e.g. "the first call denies, the
+ * second — a different, later concern — allows") sets expected.broker/adc.atStep to say
+ * so explicitly instead of relying on that implicit last-step behavior. */
 function lastMeaningfulVerdict(
   steps: StepResult[],
   layer: Layer,
+  atStep?: number,
 ): LayerVerdict | undefined {
+  if (atStep !== undefined) {
+    return steps[atStep]?.verdicts.find((v) => v.layer === layer);
+  }
   for (let i = steps.length - 1; i >= 0; i--) {
     const v = steps[i]!.verdicts.find((v) => v.layer === layer);
     if (v && v.observed) return v;
@@ -151,7 +161,11 @@ export function validateScenarioCells(
   return scenario.expected.cells.map((cell) => {
     let problem: string | undefined;
     if (cell.layer === "broker" || cell.layer === "adc") {
-      const verdict = lastMeaningfulVerdict(result.steps, cell.layer);
+      const atStep =
+        cell.layer === "broker"
+          ? scenario.expected.broker?.atStep
+          : scenario.expected.adc?.atStep;
+      const verdict = lastMeaningfulVerdict(result.steps, cell.layer, atStep);
       const pattern =
         cell.layer === "broker"
           ? scenario.expected.broker?.reasonMatches

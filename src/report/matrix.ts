@@ -26,8 +26,10 @@ export interface CoverageMatrix {
    * claimed by anything) is rendered distinctly from an explicit `missed`. */
   cells: Map<string, Partial<Record<Layer, MatrixCell>>>;
   /** Every taxonomy row referenced by at least one scenario, in encounter order — used to
-   * render rows in a stable order and to cross-check against requiresScenario rows
-   * (test/gaps-coverage.spec.ts). */
+   * render rows in a stable order. The cross-check against requiresScenario rows lives
+   * entirely in src/taxonomy/gaps-coverage.ts's checkGapsCoverage() (run via
+   * `npm run range:gaps-coverage`), not here — this matrix only ever knows about rows
+   * something actually referenced, by construction (see buildCoverageMatrix below). */
   rowOrder: string[];
   anyInvalid: boolean;
 }

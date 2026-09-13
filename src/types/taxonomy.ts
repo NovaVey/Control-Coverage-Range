@@ -21,21 +21,42 @@ export const TAXONOMY_SOURCES = [
 ] as const;
 export type TaxonomySource = (typeof TAXONOMY_SOURCES)[number];
 
-export const taxonomyRowSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  summary: z.string().min(1),
-  /** A citation a reader can go verify — a URL for external sources, a file:line-shaped
-   * reference for gaps/* rows (matching those projects' own citation discipline). */
-  reference: z.string().min(1),
-  /** gaps/* rows only: true means the source project itself calls this a live, unresolved
-   * limitation (as opposed to a "status: built and shipped" entry recorded for history). */
-  stillOpen: z.boolean().optional(),
-  /** Every row with requiresScenario:true (the default for gaps/* and identity rows) MUST
-   * have at least one scenario referencing it, checked by test/gaps-coverage.spec.ts — this
-   * is the mechanism that keeps scenario authorship honest per README's own stated bias risk. */
-  requiresScenario: z.boolean().default(true),
-});
+export const taxonomyRowSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    summary: z.string().min(1),
+    /** A citation a reader can go verify — a URL for external sources, a file:line-shaped
+     * reference for gaps/* rows (matching those projects' own citation discipline). */
+    reference: z.string().min(1),
+    /** gaps/* rows only: true means the source project itself calls this a live, unresolved
+     * limitation (as opposed to a "status: built and shipped" entry recorded for history). */
+    stillOpen: z.boolean().optional(),
+    /** Every row with requiresScenario:true (the default for gaps/* and identity rows) MUST
+     * have at least one scenario referencing it, checked by
+     * src/taxonomy/gaps-coverage.ts's checkGapsCoverage() (`npm run range:gaps-coverage`) —
+     * this is the mechanism that keeps scenario authorship honest per README's own stated
+     * bias risk. requiresScenario:false is the escape hatch from that rule, which is
+     * exactly why it needs its own audit trail — see exemptionRationale below. */
+    requiresScenario: z.boolean().default(true),
+    /** Required whenever requiresScenario is false. requiresScenario:false is an
+     * author-controlled exemption from the one rule this project holds every other row
+     * to — it needs the same argued-in-plain-language discipline as a cell's own
+     * rationale, not just a bare boolean flip. Printed alongside the matrix (see
+     * src/report/render-markdown.ts) so the exemption itself is reviewable, not just its
+     * existence. */
+    exemptionRationale: z.string().min(20).optional(),
+  })
+  .superRefine((row, ctx) => {
+    if (row.requiresScenario === false && !row.exemptionRationale) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["exemptionRationale"],
+        message:
+          "requiresScenario:false rows must carry an exemptionRationale (min 20 chars) explaining why this row is exempt from needing a scenario",
+      });
+    }
+  });
 export type TaxonomyRow = z.infer<typeof taxonomyRowSchema>;
 
 export const taxonomyFileSchema = z.object({

@@ -256,12 +256,22 @@ const brokerExpectationSchema = z.object({
    * test/schema.spec.ts): a bare "it was blocked" claim is exactly the self-deception this
    * project exists to catch (a wrong-reason deny scores blocked-incidentally, never blocked). */
   reasonMatches: z.string().optional(),
+  /** Which adversary.steps[] index this expectation actually judges — src/scoring/score.ts's
+   * lastMeaningfulVerdict() otherwise scans from the last step backward and returns the
+   * first *observed* verdict it finds, which in practice is always the last step (an ALLOW
+   * is observed:true same as a deny), silently requiring the decisive call to be the final
+   * one. Absent (the common case — one decisive call, usually the last) falls back to that
+   * same last-observed-verdict behavior; set this whenever an EARLIER step is the one this
+   * cell's claim is actually about (see earlier-token-replay.yaml's own two-step shape). */
+  atStep: z.number().int().nonnegative().optional(),
 });
 
 const adcExpectationSchema = z.object({
   result: z.enum(["allow", "deny"]),
   code: z.enum(ADC_REASON_CODES).optional(),
   reasonMatches: z.string().optional(),
+  /** Same escape hatch as brokerExpectationSchema.atStep, for the adc column. */
+  atStep: z.number().int().nonnegative().optional(),
 });
 
 const rebacExpectationSchema = z.object({
