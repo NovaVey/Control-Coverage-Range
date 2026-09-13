@@ -1,0 +1,129 @@
+name: Submodule drift check
+
+# GAPS.md #5 discloses that the matrix reflects one pinned commit of each sibling project,
+# not their current HEAD — this workflow turns that static disclaimer into actual drift
+# detection: bumps all four assembled projects to their own current HEAD (in this job's
+# own disposable checkout only — never committed, never pushed anywhere), runs the full
+# scenario corpus against that drifted stack, and opens an issue if the resulting matrix
+# moves at all relative to the committed baseline (better or worse — this is exploratory
+# monitoring, not the regression gate range.yml already enforces on every push/PR).
+#
+# Deliberately non-gating and read-only against this repository: this job never fails on
+# a moved matrix, never commits the bumped submodule pointers, and never pushes — a human
+# decides whether and how to actually move .gitmodules based on what it reports. Contrast
+# with range.yml's own "Commit updated coverage baseline" step, which DOES push, but only
+# ever advances the baseline for the pinned commits already recorded in .gitmodules.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_USER: range
+      POSTGRES_PASSWORD: range-ci-only
+      PRINCIPAL_GRAPH_DB: principalgraph
+      RBA_DB: authz_service
+      RBA_ADMIN_API_KEY: ci-only-rba-admin-key-at-least-32-characters-long
+      MINT_ADMIN_API_KEY: ci-only-mint-admin-key
+      PRINCIPAL_GRAPH_REPORT_API_KEY: ci-only-principal-graph-report-key
+      PRINCIPAL_GRAPH_REPORT_BASE_URL: http://localhost:8080
+      RBA_BASE_URL: http://localhost:3000
+      MINT_BASE_URL: http://localhost:3001
+      PRINCIPAL_GRAPH_DATABASE_URL: postgresql://range:range-ci-only@localhost:5432/principalgraph
+      MINT_GRAPH_EVENTS_PATH: ./.range-mint-events/events.ndjson
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bump every assembled project to its own current HEAD (this checkout only — never committed)
+        run: |
+          for path in stack/principal-graph stack/relationship-based-authorization stack/attenuated-delegation-chain stack/taint-tracked-tool-broker; do
+            url=$(git config -f .gitmodules --get "submodule.$path.url")
+            # .gitmodules pins a commit; it names no branch to track (see that file's own
+            # lack of a `branch =` key) — ask each remote what ITS OWN default branch
+            # actually is right now rather than guessing main/master.
+            branch=$(git ls-remote --symref "$url" HEAD | awk '/^ref:/ {print $2}' | sed 's#refs/heads/##')
+            echo "Bumping $path to $url@$branch"
+            git -C "$path" fetch --depth 1 origin "$branch"
+            git -C "$path" checkout FETCH_HEAD
+          done
+
+      - name: Generate this run's ADC root key
+        run: |
+          echo "MINT_ROOT_SECRET_KEY_B64=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Build all four sibling projects at their current HEAD (see scripts/build-stack.mjs)
+        # A project whose current HEAD doesn't even build is itself worth an issue, not a
+        # reason to abort silently — the diff script below reports "corpus didn't produce
+        # output" when this (or anything downstream) fails.
+        continue-on-error: true
+        run: node scripts/build-stack.mjs
+
+      - name: Install this range's own dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Bring up the real assembled stack
+        continue-on-error: true
+        run: |
+          docker compose up -d postgres
+          docker compose run --rm migrate-pg
+          docker compose up -d --wait rba principal-graph mint
+        env:
+          MINT_ROOT_SECRET_KEY_B64: ${{ env.MINT_ROOT_SECRET_KEY_B64 }}
+
+      - name: Run the full scenario corpus against the drifted stack (non-gating)
+        continue-on-error: true
+        run: npm run range:run -- --out .range-out
+
+      - name: Diff against the committed baseline (never fails this job)
+        run: |
+          node scripts/diff-coverage-against-baseline.mjs baseline/coverage-matrix.snapshot.json .range-out/coverage-matrix.json .range-out/drift-report.md
+
+      - name: Open an issue if the matrix drifted (skip if one is already open)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f .range-out/drift-report.md ]; then
+            echo "No drift detected — nothing to report."
+            exit 0
+          fi
+          existing=$(gh issue list --repo "${{ github.repository }}" --label "submodule-drift" --state open --json number --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "An open submodule-drift issue already exists — skipping (see that issue instead of piling up duplicates)."
+            exit 0
+          fi
+          gh label create "submodule-drift" --color "d4c5f9" \
+            --description "Opened by the scheduled submodule-drift workflow (.github/workflows/submodule-drift.yml)" \
+            --repo "${{ github.repository }}" 2>/dev/null || true
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Submodule drift: coverage matrix moved against current HEAD ($(date -u +%Y-%m-%d))" \
+            --body-file .range-out/drift-report.md \
+            --label "submodule-drift"
+
+      - name: Upload coverage matrix (drifted run)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-matrix-drift
+          path: .range-out/
+
+      - name: Compose logs (always — a drifted stack failing to come up is exactly what this job watches for)
+        if: always()
+        run: docker compose logs || true

@@ -82,6 +82,18 @@ an oversight, but worth naming: "the range says X is covered" is scoped
 to the pinned commits recorded in `.gitmodules` at the time the matrix
 was generated.
 
+`.github/workflows/submodule-drift.yml` turns this from a static
+disclaimer into actual drift detection: weekly (and on demand), it bumps
+all four projects to their own current HEAD in a disposable checkout,
+runs the full corpus non-gating, and opens an issue if the resulting
+matrix moves at all relative to the committed baseline — in either
+direction, a regression or an improvement. It never commits the bumped
+pointers itself; a human still decides whether and how to actually move
+`.gitmodules` based on what it reports. This narrows the gap (drift gets
+surfaced within a week instead of silently, indefinitely) without
+eliminating it: the matrix a reader sees at any given moment is still
+scoped to whatever commits `.gitmodules` names right then.
+
 ## 6. Every other finding has its own home, not repeated here
 
 This project pulled a substantial number of concrete, cited findings out

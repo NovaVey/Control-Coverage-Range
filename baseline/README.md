@@ -8,11 +8,14 @@ marked `assertsKnownGap` or one that was already flagged invalid in the
 prior baseline.
 
 This file only ever moves forward via CI itself, never a manual edit:
-`.github/workflows/range.yml`'s "Commit updated coverage baseline" step
-commits whatever `range:check-regression` wrote into this checkout back to
-`main`, but only on a `push` to `main` — never on a pull request, which is
-judged against main's own last-known-good baseline and must never be
-allowed to quietly rewrite it itself. (An earlier version of this
+`.github/workflows/range.yml`'s "Commit updated coverage baseline +
+rendered matrix" step commits whatever `range:check-regression` wrote into
+this checkout back to `main`, but only on a `push` to `main` — never on a
+pull request, which is judged against main's own last-known-good baseline
+and must never be allowed to quietly rewrite it itself. The same step, same
+commit, also refreshes `COVERAGE.md` and its embed in `README.md`'s own
+"Current coverage matrix" section — this file, `COVERAGE.md`, and that
+README section always move together, never independently. (An earlier version of this
 workflow ran `range:check-regression` without that commit-back step at
 all — every run, PR or push alike, found "no baseline yet" in its own
 disposable checkout and silently accepted whatever the corpus produced,

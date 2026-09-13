@@ -19,7 +19,11 @@ import {
   saveBaseline,
 } from "../report/baseline.js";
 import { RbaClient } from "../adapters/rba.js";
-import { MintClient } from "../adapters/adc.js";
+import {
+  MintClient,
+  readNewGraphEvents,
+  currentGraphEventsByteOffset,
+} from "../adapters/adc.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -219,6 +223,59 @@ async function main(): Promise<void> {
       const mintHealthy = await conn.mint.health();
       console.log("Mint service reachable:", mintHealthy);
       healthy &&= mintHealthy;
+
+      // Every check above proves a service is *reachable* — none of them prove mint's own
+      // events actually reach this range's own bridge (src/adapters/adc.ts), the thing a
+      // container-only MINT_GRAPH_EVENTS_PATH silently defeated before this range's own
+      // bind-mount fix. Mint a real, throwaway token (subject: nobody real, caveats: none,
+      // so nothing downstream depends on it existing) and assert a real @adc/graph 'mint'
+      // event actually lands where readNewGraphEvents can see it.
+      let bridgeHealthy = true;
+      if (mintHealthy) {
+        try {
+          const offsetBefore = currentGraphEventsByteOffset(
+            conn.mintGraphEventsPath,
+          );
+          await conn.mint.mint({
+            subject: { ns: "principal", id: "doctor_throwaway_check" },
+            caveats: [],
+          });
+          // The mint service's own event write isn't guaranteed synchronous with its HTTP
+          // response — poll briefly (up to ~2s) rather than assuming either instant
+          // visibility or a fixed sleep.
+          let events: unknown[] = [];
+          for (
+            let attempt = 0;
+            attempt < 10 && events.length === 0;
+            attempt++
+          ) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 200));
+            events = readNewGraphEvents(
+              conn.mintGraphEventsPath,
+              offsetBefore,
+            ).events;
+          }
+          bridgeHealthy = events.length > 0;
+          if (!bridgeHealthy) {
+            console.error(
+              `Mint→Principal-Graph event bridge: minted a throwaway token but no @adc/graph event appeared at ${conn.mintGraphEventsPath} after ~2s — the bridge is not actually wired end to end (check docker-compose.yml's bind mount and MINT_GRAPH_EVENTS_PATH on both sides).`,
+            );
+          }
+        } catch (err) {
+          bridgeHealthy = false;
+          console.error("Mint→Principal-Graph event bridge check failed:", err);
+        }
+      } else {
+        bridgeHealthy = false;
+        console.error(
+          "Mint→Principal-Graph event bridge: skipped (mint service unreachable)",
+        );
+      }
+      console.log(
+        "Mint→Principal-Graph event bridge reachable:",
+        bridgeHealthy,
+      );
+      healthy &&= bridgeHealthy;
 
       let principalGraphReportHealthy = true;
       try {

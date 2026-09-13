@@ -13,8 +13,9 @@
 // submodules, not workspaces" section).
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = new URL('..', import.meta.url).pathname;
+const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 // attenuated-delegation-chain declares its own npm workspaces (packages/*, services/*)
 // and its root "build" script already fans out to every one of them

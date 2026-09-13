@@ -92,16 +92,22 @@ jobs:
       # the corpus currently produces, never comparing against real history. This is the
       # one place that gap closes — push-to-main only, since a PR should be judged against
       # main's own last-known-good baseline, never allowed to quietly rewrite it itself.
-      - name: Commit updated coverage baseline (push to main only)
+      # Also, in this same commit: COVERAGE.md (the same rendered matrix range:run already
+      # wrote to .range-out/coverage-matrix.md) and its embed in README.md — see README's
+      # own "Current coverage matrix" section. One commit, one push, same gate: a reader
+      # shouldn't have to build four projects and run Docker to see a single cell.
+      - name: Commit updated coverage baseline + rendered matrix (push to main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          cp .range-out/coverage-matrix.md COVERAGE.md
+          node scripts/update-readme-coverage.mjs
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add baseline/coverage-matrix.snapshot.json
+          git add baseline/coverage-matrix.snapshot.json COVERAGE.md README.md
           if git diff --cached --quiet; then
-            echo "Baseline unchanged."
+            echo "Coverage matrix unchanged."
           else
-            git commit -m "chore: update coverage-matrix baseline [skip ci]"
+            git commit -m "chore: update coverage matrix (baseline + COVERAGE.md + README) [skip ci]"
             git push
           fi
 
