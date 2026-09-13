@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import {
   mintRoot,
   attenuate,
@@ -241,6 +241,16 @@ export function readNewGraphEvents(
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line) as RealGraphEventJson);
   return { events, newOffset: buf.length };
+}
+
+/** Current byte length of the mint events file, or 0 if it doesn't exist yet — the "read
+ * from here forward" offset a caller should pass to readNewGraphEvents to see only events
+ * written from this point on. Used by `doctor`'s own bridge-liveness check, which needs
+ * its own independent starting offset rather than reusing RangeConnections.graphEventsOffset
+ * (which tracks a scenario run's own draining, not a standalone doctor invocation). */
+export function currentGraphEventsByteOffset(filePath: string): number {
+  if (!existsSync(filePath)) return 0;
+  return statSync(filePath).size;
 }
 
 /** sha256 hex — matches @adc/core's own blockSignatureHash() input shape when a scenario
