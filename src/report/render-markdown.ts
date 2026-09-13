@@ -78,5 +78,21 @@ export function renderMarkdown(
     lines.push("");
   }
 
+  const exempted = [...taxonomy.rows.values()].filter(
+    (row) => !row.requiresScenario,
+  );
+  if (exempted.length > 0) {
+    lines.push("## Rows exempted from needing a scenario");
+    lines.push("");
+    lines.push(
+      "Every taxonomy row defaults to requiring at least one scenario (checked by `npm run range:gaps-coverage`); a row can opt out with `requiresScenario: false`, but only alongside its own `exemptionRationale` (schema-enforced — see src/types/taxonomy.ts). Printed here so the exemption itself is reviewable, not just its existence:",
+    );
+    lines.push("");
+    for (const row of exempted) {
+      lines.push(`- **${row.name}** — ${row.exemptionRationale}`);
+    }
+    lines.push("");
+  }
+
   return lines.join("\n");
 }

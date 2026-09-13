@@ -1,8 +1,14 @@
 #!/usr/bin/env node
+import { fileURLToPath } from "node:url";
+import { config as loadDotenv } from "dotenv";
 import { Pool } from "pg";
 import { loadTaxonomy } from "../taxonomy/load.js";
 import { loadAllScenarios, validateTaxonomyRefs } from "../scenario/load.js";
-import { runScenario, type RangeConnections } from "../runner/run-scenario.js";
+import {
+  runScenario,
+  fetchPrincipalGraphReportSnapshot,
+  type RangeConnections,
+} from "../runner/run-scenario.js";
 import { validateScenarioCells } from "../scoring/score.js";
 import { buildCoverageMatrix } from "../report/matrix.js";
 import { renderMarkdown } from "../report/render-markdown.js";
@@ -15,7 +21,15 @@ import {
 import { RbaClient } from "../adapters/rba.js";
 import { MintClient } from "../adapters/adc.js";
 
-const REPO_ROOT = new URL("../../", import.meta.url).pathname;
+const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+
+// README says `cp .env.example .env` then run this CLI directly — nothing else in this
+// project ever reads a .env file, so without this a fresh clone's first `requireEnv` call
+// throws "missing required environment variable" despite a populated .env sitting right
+// there. Doesn't override a variable CI (or a caller's own shell) already set directly —
+// dotenv's own default — so this is a no-op in CI, where every value below comes from the
+// workflow's own `env:` blocks and no .env file exists at all.
+loadDotenv({ path: `${REPO_ROOT}.env`, quiet: true });
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -56,7 +70,7 @@ async function buildConnections(): Promise<RangeConnections> {
     mintBaseUrl,
     adcRootSecretKey,
     adcRootPublicKey,
-    principalGraphReportBaseUrl: `http://localhost:8080`,
+    principalGraphReportBaseUrl: requireEnv("PRINCIPAL_GRAPH_REPORT_BASE_URL"),
     principalGraphReportApiKey: requireEnv("PRINCIPAL_GRAPH_REPORT_API_KEY"),
     mintGraphEventsPath: requireEnv("MINT_GRAPH_EVENTS_PATH"),
     graphEventsOffset: { value: 0 },
@@ -189,12 +203,48 @@ async function main(): Promise<void> {
       return;
     }
     case "doctor": {
+      // Every check below actually gates the exit code now — this used to log each
+      // result and always return 0, so a service that never came up (or a Postgres that
+      // was never reachable) still reported CI green; the real waiting is now
+      // docker-compose's own `up -d --wait` against each service's healthcheck, which
+      // makes this command's job an explicit pass/fail assertion rather than the only
+      // thing standing between "up -d" and the corpus run actually starting.
       const conn = await buildConnections();
-      console.log("RBA reachable:", await conn.rba.health());
-      console.log("Mint service reachable:", await conn.mint.health());
-      await conn.pgPool.query("select 1");
-      console.log("Principal-Graph Postgres reachable: true");
+      let healthy = true;
+
+      const rbaHealthy = await conn.rba.health();
+      console.log("RBA reachable:", rbaHealthy);
+      healthy &&= rbaHealthy;
+
+      const mintHealthy = await conn.mint.health();
+      console.log("Mint service reachable:", mintHealthy);
+      healthy &&= mintHealthy;
+
+      let principalGraphReportHealthy = true;
+      try {
+        await fetchPrincipalGraphReportSnapshot(conn);
+      } catch (err) {
+        principalGraphReportHealthy = false;
+        console.error("Principal-Graph report API check failed:", err);
+      }
+      console.log(
+        "Principal-Graph report API reachable:",
+        principalGraphReportHealthy,
+      );
+      healthy &&= principalGraphReportHealthy;
+
+      let postgresHealthy = true;
+      try {
+        await conn.pgPool.query("select 1");
+      } catch (err) {
+        postgresHealthy = false;
+        console.error("Principal-Graph Postgres check failed:", err);
+      }
+      console.log("Principal-Graph Postgres reachable:", postgresHealthy);
+      healthy &&= postgresHealthy;
+
       await conn.pgPool.end();
+      process.exitCode = healthy ? 0 : 1;
       return;
     }
     default:

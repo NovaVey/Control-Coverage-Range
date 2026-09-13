@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { load as parseYaml } from "js-yaml";
 import {
   taxonomyFileSchema,
@@ -14,12 +15,19 @@ export interface LoadedTaxonomy {
   bySource: Map<TaxonomySource, TaxonomyRow[]>;
 }
 
-const TAXONOMY_DIR_DEFAULT = new URL("../../taxonomy/", import.meta.url)
-  .pathname;
+const TAXONOMY_DIR_DEFAULT = fileURLToPath(
+  new URL("../../taxonomy/", import.meta.url),
+);
 
 function listYamlFiles(dir: string): string[] {
   const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  // readdirSync's order is filesystem-dependent, not alphabetical — sorting here (and at
+  // each recursion level) is what makes taxonomy row order, and everything downstream of
+  // it (the rendered matrix, the persisted baseline), reproducible across machines.
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  for (const entry of entries) {
     if (entry.isDirectory()) {
       out.push(...listYamlFiles(join(dir, entry.name)));
     } else if (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")) {

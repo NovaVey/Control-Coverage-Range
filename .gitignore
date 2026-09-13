@@ -7,3 +7,4 @@ coverage/
 stack/*/node_modules/
 stack/*/dist/
 .range-out/
+.range-mint-events/

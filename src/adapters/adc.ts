@@ -219,7 +219,20 @@ export function readNewGraphEvents(
   filePath: string,
   sinceByteOffset: number,
 ): { events: RealGraphEventJson[]; newOffset: number } {
-  if (!existsSync(filePath)) return { events: [], newOffset: sinceByteOffset };
+  if (!existsSync(filePath)) {
+    // A silent { events: [] } here is indistinguishable from "the bridge ran and there
+    // was nothing new to drain" — the exact failure mode of MINT_GRAPH_EVENTS_PATH
+    // pointing at a file mint never writes (a container-only path handed to a host
+    // process, say). Loud on every call rather than once, deliberately: this always runs
+    // inside a scripted CI job whose full log is the point of contact, not a long-lived
+    // process where per-call noise would actually matter.
+    console.warn(
+      `readNewGraphEvents: MINT_GRAPH_EVENTS_PATH (${filePath}) does not exist — ` +
+        `draining zero events. If the mint service is running, check that this path ` +
+        `and its own bind mount (docker-compose.yml) actually agree on where the file is.`,
+    );
+    return { events: [], newOffset: sinceByteOffset };
+  }
   const contents = readFileSync(filePath, "utf8");
   const buf = Buffer.from(contents, "utf8");
   const slice = buf.subarray(sinceByteOffset).toString("utf8");

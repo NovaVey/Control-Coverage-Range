@@ -33,6 +33,12 @@ rows:
       agent, not artifact/dependency provenance.
     reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
     requiresScenario: false
+    exemptionRationale: >-
+      Structurally out of scope, not merely unaddressed: this range assembles
+      four runtime authorization/taint-tracking projects with no dependency-
+      provenance or artifact-signing concern anywhere in their surface — there
+      is no tool call, grant, or token an adversary step could exercise that
+      would speak to a compromised model/data/plugin question at all.
   - id: LLM04
     name: "LLM04:2025 Data and Model Poisoning"
     summary: >-
@@ -41,6 +47,12 @@ rows:
       assembled projects.
     reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
     requiresScenario: false
+    exemptionRationale: >-
+      Structurally out of scope: none of the four assembled projects runs or
+      exposes a training pipeline, so there is no runtime call sequence a
+      scenario could construct that would exercise a training-time poisoning
+      question — this range only ever observes an already-trained model's
+      calls, never its training.
   - id: LLM05
     name: "LLM05:2025 Improper Output Handling"
     summary: >-
@@ -75,6 +87,11 @@ rows:
       anywhere in the four assembled projects.
     reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
     requiresScenario: false
+    exemptionRationale: >-
+      Structurally out of scope: none of the four assembled projects stands
+      up or calls a vector store or embedding pipeline, so there is nothing
+      in this range's own architecture a scenario could target to exercise
+      an embedding-weakness question.
   - id: LLM09
     name: "LLM09:2025 Misinformation"
     summary: >-
@@ -85,6 +102,12 @@ rows:
       general misinformation) and is filed under LLM05 instead.
     reference: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
     requiresScenario: false
+    exemptionRationale: >-
+      Out of scope for what this project measures: none of the four
+      assembled projects can judge output truthfulness, so no scenario here
+      could produce an empirical verdict on misinformation specifically. The
+      closest in-scope proxy (checkFieldGrounding()) is already filed, and
+      scenario-covered, under LLM05 instead — see that row's own summary.
   - id: LLM10
     name: "LLM10:2025 Unbounded Consumption"
     summary: >-

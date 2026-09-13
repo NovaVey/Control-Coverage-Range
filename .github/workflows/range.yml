@@ -26,7 +26,12 @@ jobs:
       RBA_BASE_URL: http://localhost:3000
       MINT_BASE_URL: http://localhost:3001
       PRINCIPAL_GRAPH_DATABASE_URL: postgresql://range:range-ci-only@localhost:5432/principalgraph
-      MINT_GRAPH_EVENTS_PATH: /tmp/adc-mint-events.ndjson
+      PRINCIPAL_GRAPH_REPORT_BASE_URL: http://localhost:8080
+      # Must be the host path docker-compose.yml's mint service bind-mounts its own
+      # /var/log/adc-mint to (./.range-mint-events, relative to this checkout's root,
+      # which is this job's working directory) — not a path that only ever existed inside
+      # that container, and not an unrelated scratch path either.
+      MINT_GRAPH_EVENTS_PATH: ./.range-mint-events/events.ndjson
 
     steps:
       - uses: actions/checkout@v4
@@ -61,11 +66,15 @@ jobs:
         run: |
           docker compose up -d postgres
           docker compose run --rm migrate-pg
-          docker compose up -d rba principal-graph mint
+          # --wait blocks until rba/principal-graph/mint each report healthy per their own
+          # docker-compose.yml healthcheck (or fails the step if one never does) — this
+          # replaces what used to be a bare `up -d` immediately followed by a single-shot
+          # `doctor` check with no actual wait behind it at all.
+          docker compose up -d --wait rba principal-graph mint
         env:
           MINT_ROOT_SECRET_KEY_B64: ${{ env.MINT_ROOT_SECRET_KEY_B64 }}
 
-      - name: Wait for every service to report healthy
+      - name: Confirm every service this range's own CLI depends on is reachable
         run: |
           npx tsx src/cli/index.ts doctor
 

@@ -54,8 +54,8 @@ npm install --legacy-peer-deps # see "Known npm quirk" below
 cp .env.example .env           # fill in MINT_ROOT_SECRET_KEY_B64, see that file
 docker compose up -d postgres
 docker compose run --rm migrate-pg
-docker compose up -d rba principal-graph mint
-npm run range:doctor           # confirms every service is reachable
+docker compose up -d --wait rba principal-graph mint  # waits on each service's own healthcheck
+npm run range:doctor           # fails loudly if anything isn't actually reachable
 npm run range:run              # runs the whole scenario corpus, writes .range-out/
 npm run range:check-regression # fails if any cell regressed against baseline/
 ```

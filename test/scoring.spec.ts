@@ -276,6 +276,93 @@ describe("validateScenarioCells", () => {
     const cells = validateScenarioCells(scenario, result);
     expect(cells[0]!.valid).toBe(false);
   });
+
+  it("without atStep, a later observed ALLOW silently overrides an earlier step's denial", () => {
+    const scenario = minimalScenario({
+      expected: {
+        broker: { decision: "BLOCK", reasonMatches: "unconditional block" },
+        cells: [
+          {
+            layer: "broker",
+            outcome: "blocked",
+            rationale: "the first call is the one this scenario is about",
+          },
+        ],
+      },
+    });
+    const allowedBroker: LayerVerdict = {
+      layer: "broker",
+      raw: { action: "ALLOW" },
+      denied: false,
+      requiresApproval: false,
+      observed: true,
+    };
+    const steps: StepResult[] = [
+      { stepIndex: 0, tool: "shell_exec", verdicts: [BLOCKED_BROKER] },
+      { stepIndex: 1, tool: "shell_exec", verdicts: [allowedBroker] },
+    ];
+    const result: ScenarioRunResult = {
+      scenario,
+      steps,
+      identityGraph: {
+        layer: "identity-graph",
+        raw: {},
+        denied: false,
+        requiresApproval: false,
+        observed: false,
+      },
+    };
+    const cells = validateScenarioCells(scenario, result);
+    // This is the bug atStep exists to make explicit, not silently work around: absent an
+    // atStep pin, the scorer has no way to know step 0 (not step 1) is the one this
+    // scenario's 'blocked' claim is actually about, so it scores against the last
+    // observed verdict — the step 1 ALLOW — and rejects a perfectly true claim.
+    expect(cells[0]!.valid).toBe(false);
+    expect(cells[0]!.problem).toMatch(/actually allowed the call through/);
+  });
+
+  it("expected.broker.atStep pins scoring to that step, independent of a later step's own verdict", () => {
+    const scenario = minimalScenario({
+      expected: {
+        broker: {
+          decision: "BLOCK",
+          reasonMatches: "unconditional block",
+          atStep: 0,
+        },
+        cells: [
+          {
+            layer: "broker",
+            outcome: "blocked",
+            rationale: "the first call is the one this scenario is about",
+          },
+        ],
+      },
+    });
+    const allowedBroker: LayerVerdict = {
+      layer: "broker",
+      raw: { action: "ALLOW" },
+      denied: false,
+      requiresApproval: false,
+      observed: true,
+    };
+    const steps: StepResult[] = [
+      { stepIndex: 0, tool: "shell_exec", verdicts: [BLOCKED_BROKER] },
+      { stepIndex: 1, tool: "shell_exec", verdicts: [allowedBroker] },
+    ];
+    const result: ScenarioRunResult = {
+      scenario,
+      steps,
+      identityGraph: {
+        layer: "identity-graph",
+        raw: {},
+        denied: false,
+        requiresApproval: false,
+        observed: false,
+      },
+    };
+    const cells = validateScenarioCells(scenario, result);
+    expect(cells[0]!.valid).toBe(true);
+  });
 });
 
 describe("isExpectedGap", () => {
