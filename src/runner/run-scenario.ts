@@ -171,9 +171,9 @@ async function revokeDeclaredTokens(
 }
 
 /** Drains any new @adc/graph events the mint service wrote since the last scenario run
- * in this suite, translating and feeding each into Principal-Graph's own real
- * createAdcGraphSink() — see taxonomy/gaps/principal-graph.yaml's
- * adc-graph-sink-event-shape-drift row for what this bridge fixes and what it doesn't. */
+ * in this suite, feeding each into Principal-Graph's own real createAdcGraphSink() — see
+ * src/adapters/adc.ts's own module doc comment for how this bridge has narrowed now that
+ * Principal-Graph's own sink matches @adc/graph's real event shape directly. */
 async function drainAdcGraphEvents(conn: RangeConnections): Promise<void> {
   const { events, newOffset } = readNewGraphEvents(
     conn.mintGraphEventsPath,
@@ -183,7 +183,7 @@ async function drainAdcGraphEvents(conn: RangeConnections): Promise<void> {
   if (events.length === 0) return;
   const sink = createAdcGraphSink({ pool: conn.pgPool });
   for (const real of events) {
-    sink.write(translateGraphEventToPrincipalGraph(real));
+    sink.record(translateGraphEventToPrincipalGraph(real));
   }
   await sink.flush();
 }
@@ -258,8 +258,9 @@ export async function runScenario(
   // Any mint/revoke activity above already landed in the mint service's own
   // MINT_GRAPH_EVENTS_PATH (docker-compose sets it — see ARCHITECTURE.md); drain it into
   // Principal-Graph BEFORE the adversary session runs, so a confused-deputy scenario's
-  // on-behalf-of grant (this bridge's own fix, see taxonomy row) is live in time to be
-  // exercised by a subsequent broker call, not just recorded after the fact.
+  // on-behalf-of grant (createAdcGraphSink()'s own on-behalf-of-trap fix — see that
+  // function's real source, stack/principal-graph/src/adapters/adc-graph-sink.ts) is live
+  // in time to be exercised by a subsequent broker call, not just recorded after the fact.
   await drainAdcGraphEvents(conn);
 
   // 4. Broker session: one instance = one session = one acting principal, per TTTB's own

@@ -11,60 +11,57 @@
 source: gaps/tttb
 rows:
   - id: principal-feature-unreleased-at-pin-time
-    name: "BrokerOptions.principal (the identity axis GAPS.md #34 documents) is not in the published npm 1.4.0, and a plain git dependency cannot substitute for it either"
+    name: "CLOSED: a plain git dependency on taint-tracked-tool-broker used to be unbuildable — it isn't anymore"
     summary: >-
-      package.json's own declared version at the commit this range read
-      GAPS.md #34 from says "1.4.0" — identical to the version string
-      actually published to the npm registry — but the two are different
-      code: `npm view taint-tracked-tool-broker@1.4.0 gitHead` resolves to a
-      commit that predates BrokerOptions.principal/TaintContext.principal
-      entirely (confirmed directly: that field is simply absent from the
-      published package's own .d.ts), while the git repository's current
-      main branch (the commit this range's own adapters and
-      rbac-aware-policy-closes-identity-blindness scenario were built and
-      typechecked against) has the feature. A second, independently
-      confirmed problem surfaced trying the obvious fix: pinning
-      `"taint-tracked-tool-broker": "github:NovaVey/Taint-Tracked-Tool-Broker#<sha>"`
-      as a plain npm dependency installs but produces an UNBUILDABLE
-      package — npm's git-install path only runs a package's own `prepare`
-      lifecycle script (this project defines `prepack`, for `npm
-      pack`/publish, not `prepare`), and separately still applies
-      package.json's own `files` allowlist (`["dist", "docs", "examples",
-      "conformance", ...]`) when placing a git dependency into
-      node_modules — so a raw git checkout with no `dist/` built yet ends
-      up with no `src/` either, and nothing buildable ever reaches
-      node_modules at all. Confirmed directly (a real `npm install` left
-      node_modules/taint-tracked-tool-broker with no `src/` directory, only
-      the `files`-allowlisted docs/examples/conformance), not inferred.
-      This range's actual fix is a git submodule (stack/taint-tracked-tool-broker,
-      pinned to the same commit, built explicitly via
-      scripts/build-stack.mjs, imported by relative path via
-      src/adapters/tttb-lib.ts) — the identical pattern this range already
-      uses for Principal-Graph's own "no importable library surface" gap,
-      extended here for a different but related reason. Worth naming
-      plainly: this whole chain is a small instance of exactly the failure
-      class this project exists to catch, this time in the range's own
-      dependency choice rather than in the four assembled projects'
-      integration — an integrator trusting semver alone ("^1.4.0") would
-      have silently gotten different runtime behavior than this range's own
-      code was actually verified against, and the first, more obvious fix
-      (a plain git dependency) would have failed at install time in a way
-      that could easily be misread as an unrelated environment problem.
+      Originally: package.json's own declared version at the commit this
+      range first read GAPS.md #34 from said "1.4.0" — identical to the
+      version string actually published to the npm registry — but the two
+      were different code: the published `1.4.0` predated
+      BrokerOptions.principal/TaintContext.principal entirely, while this
+      repo's own git HEAD had the feature. Pinning
+      `"taint-tracked-tool-broker": "github:...#<sha>"` as a plain npm
+      dependency was the obvious fix, but confirmed UNBUILDABLE at the
+      time: npm's git-install path only ran a package's own `prepare`
+      lifecycle script, and this project defined only `prepack` (for `npm
+      pack`/publish); `files` was also still applied to a git install,
+      stripping `src/` before any build could happen — a real `npm
+      install` left node_modules/taint-tracked-tool-broker with no `src/`
+      directory at all. This range's fix was a git submodule
+      (stack/taint-tracked-tool-broker, built explicitly via
+      scripts/build-stack.mjs).
+
+      RESOLVED: taint-tracked-tool-broker's own release-hygiene fix ("Fix
+      release hygiene (git-install buildability, version collision, Node
+      22 floor)") added a real `"prepare": "npm run build"` script
+      alongside `prepack`, and added `src` to the `files` allowlist — a
+      plain git dependency now builds correctly on install. Confirmed
+      working, not just theoretically fixed: Principal-Graph's own
+      package.json now depends on this exact project the exact same way
+      ("taint-tracked-tool-broker":
+      "git+https://.../Taint-Tracked-Tool-Broker.git#<sha>"), successfully.
+      This range still keeps its own
+      submodule (now for a narrower, still-real reason — typechecking
+      against source, and parity with its other three submodules' own
+      build step — see ARCHITECTURE.md), and scripts/build-stack.mjs now
+      asserts its own taint-tracked-tool-broker pin matches the exact
+      commit Principal-Graph's package.json itself depends on, so the two
+      can never silently diverge the way they did before either fix
+      existed.
     reference: >-
-      package.json (no taint-tracked-tool-broker npm dependency at all);
-      .gitmodules (stack/taint-tracked-tool-broker); src/adapters/tttb-lib.ts;
-      confirmed via `npm view taint-tracked-tool-broker@1.4.0 gitHead` vs the
-      git repository's current HEAD, and via a real `npm install` of a
-      github: dependency reference that left no src/ in node_modules
-    stillOpen: true
+      taint-tracked-tool-broker's own release-hygiene fix (package.json's
+      `prepare` script, `files` allowlist including `src`);
+      principal-graph/package.json (its own working git dependency on this
+      exact project); .gitmodules (stack/taint-tracked-tool-broker);
+      scripts/build-stack.mjs (assertTttbPinsAgree())
+    stillOpen: false
     requiresScenario: false
     exemptionRationale: >-
-      A dependency-resolution/build-integrity finding about this range's own
-      packaging choice, not an attack technique — no adversary steps could
-      meaningfully demonstrate "the wrong npm version would have been
-      pinned." The actual fix (a git submodule, built explicitly via
-      scripts/build-stack.mjs) is verified structurally by that build
-      succeeding at all, not by a scenario run.
+      A dependency-resolution/build-integrity finding about this range's
+      own packaging choice, not an attack technique — no adversary steps
+      could meaningfully demonstrate a packaging fix. The fix is verified
+      structurally: scripts/build-stack.mjs's own assertTttbPinsAgree()
+      fails CI loudly the moment this range's submodule pin and
+      Principal-Graph's own dependency pin ever disagree again.
   - id: gap-01-untracked-context-channel
     name: "GAPS.md #1 — Untracked context-injection channels"
     summary: >-

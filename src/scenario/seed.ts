@@ -1,16 +1,13 @@
 import type { Scenario } from "../types/scenario.js";
 import type { TupleWrite } from "../adapters/rba.js";
-import { scoped, rbaObject, rbaSubject, rbaIdentifier } from "./identifiers.js";
+import { scoped, rbaObject, rbaSubject } from "./identifiers.js";
 
 /** Mirrors Principal-Graph's own real RBA-exporter mapping (src/exporters/rba.ts,
- * confirmed directly against that file): objectNs = resource.kind, objectId =
- * `${resource.source}:${externalId}`, relation unchanged, subjectNs = the fixed constant
- * 'principal', subjectId = `${principal.source}:${externalId}` — up to rbaIdentifier()'s
- * own sanitization (src/scenario/identifiers.ts), which is as close to that real exporter's
- * output as a tuple can get and still be accepted by RBA's own real identifier grammar; see
- * that function's own doc comment, and taxonomy/gaps/principal-graph.yaml's
- * rba-exporter-identifier-grammar-mismatch row, for why an exact byte-for-byte copy is not
- * possible here. */
+ * confirmed directly against that file), byte-for-byte: objectNs = resource.kind,
+ * objectId = `${resource.source}:${externalId}`, relation unchanged, subjectNs = the
+ * fixed constant 'principal', subjectId = `${principal.source}:${externalId}` — see
+ * rbaSubject()/rbaObject()'s own doc comments (src/scenario/identifiers.ts) for why this
+ * no longer needs any sanitization to satisfy RBA's own real identifier grammar. */
 export function grantsToRebacTuples(scenario: Scenario): TupleWrite[] {
   const principalsById = new Map(
     scenario.stack.principals.map((p) => [p.id, p]),
@@ -46,13 +43,13 @@ export function grantsToRebacTuples(scenario: Scenario): TupleWrite[] {
  * A tuple's own objectId/subjectId can name one of TWO different things, and each needs a
  * different resolution:
  *   - A purely synthetic RBA-only fixture never declared in stack.principals/resources
- *     (a group-nesting scenario's own "leaf"/"mid"/"root" group ids, say) — scoped and
- *     sanitized directly, same as always.
+ *     (a group-nesting scenario's own "leaf"/"mid"/"root" group ids, say) — scoped
+ *     directly, same as always.
  *   - A real stack.principals[]/resources[] entry ALSO independently looked up elsewhere
  *     (expected.rebac.check's rbaSubject()/rbaObject(), grantsToRebacTuples(),
  *     resolveScopeCaveats()) — which must resolve through that SAME function, not just
- *     scoped+sanitized directly, or the two paths produce different ids for the identical
- *     logical principal/resource and never connect. Confirmed empirically: an explicit
+ *     scoped directly, or the two paths produce different ids for the identical logical
+ *     principal/resource and never connect. Confirmed empirically: an explicit
  *     tuple naming alice via `subjectNs: user` while expected.rebac.check's own lookup
  *     resolves her via rbaSubject() (always `ns: 'principal'`, source-prefixed) never
  *     matched at all — RBA correctly reported no connection, which happened to still equal
@@ -80,7 +77,7 @@ export function scopeExplicitTuples(
     const resource = resourcesById.get(t.objectId);
     const object = resource
       ? rbaObject(scenario, resource)
-      : { ns: t.objectNs, id: rbaIdentifier(scoped(scenario, t.objectId)) };
+      : { ns: t.objectNs, id: scoped(scenario, t.objectId) };
 
     let subject: { ns: string; id: string };
     if (t.subjectId === "*") {
@@ -89,10 +86,7 @@ export function scopeExplicitTuples(
       const principal = principalsById.get(t.subjectId);
       subject = principal
         ? rbaSubject(scenario, principal)
-        : {
-            ns: t.subjectNs,
-            id: rbaIdentifier(scoped(scenario, t.subjectId)),
-          };
+        : { ns: t.subjectNs, id: scoped(scenario, t.subjectId) };
     }
 
     return {

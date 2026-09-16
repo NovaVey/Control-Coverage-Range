@@ -112,18 +112,20 @@ export async function fetchRevokedHashes(
   return hashes;
 }
 
-// ---- adc-graph bridge: real @adc/graph events -> Principal-Graph's real, but
-// independently-guessed, createAdcGraphSink() consumer ----
+// ---- adc-graph bridge: real @adc/graph events -> Principal-Graph's real
+// createAdcGraphSink() consumer ----
 //
-// See taxonomy/gaps/principal-graph.yaml's adc-graph-sink-event-shape-drift row: this
-// bridge is the field-name translation neither project ships, confirmed necessary by
-// reading both real sources side by side in this range. It does NOT fix the confirmed
-// kind:'agent' hardcoding inside Principal-Graph's own handle() (that lives in the
-// sibling project's own source, out of scope to patch here) — a mint event's real
-// principal.kind ('service', per @adc/graph's rootKeyPrincipal()) is still recorded in
-// Principal-Graph as kind:'agent' once this bridge hands it off; see that GAPS row for
-// why this range reports the residual rather than silently working around it by
-// bypassing Principal-Graph's own shipped function.
+// Principal-Graph's own adc-graph-sink.ts used to be an independently-guessed
+// reimplementation of @adc/graph's event shape — this bridge existed specifically to
+// translate between the two (see taxonomy/gaps/principal-graph.yaml's now-closed
+// adc-graph-sink-event-shape-drift row for that history). Principal-Graph's own rewrite
+// (verified directly against Attenuated-Delegation-Chain's real source) now mirrors
+// @adc/graph's real GraphEvent field-for-field, including passing `event.principal`
+// straight to `ensurePrincipal()` — the confirmed kind:'agent' hardcoding this bridge used
+// to report as a residual is gone too. What's left below is no longer a field-remapping
+// translation, just the one real structural difference (occurredAt arrives as an ISO
+// string over the wire, Date in-process) plus a defensive check that this range still only
+// ever sees an action it recognizes.
 
 /** The real @adc/graph GraphEvent shape, as JSON (Date -> ISO string via JSON.stringify's
  * own Date.prototype.toJSON, per createNdjsonGraphSink's own doc comment). */
@@ -167,22 +169,24 @@ function isAdcGraphAction(
   );
 }
 
-/** Translates one real, on-the-wire @adc/graph GraphEvent into the AdcGraphEvent shape
- * Principal-Graph's own createAdcGraphSink() actually expects — the missing piece both
- * projects' own docs disclose as unconfirmed (see this file's module doc comment). */
+/** Converts one real, on-the-wire @adc/graph GraphEvent (JSON, from the mint service's own
+ * NDJSON sink) into the AdcGraphEvent shape Principal-Graph's own createAdcGraphSink()
+ * actually expects in-process — now a near-identity mapping (see this file's module doc
+ * comment for why): the one real conversion is occurredAt's wire string to a Date;
+ * everything else passes straight through unchanged. Still validates `action` is one of
+ * the five kinds this range's own scenarios account for, rather than trusting the wire
+ * blindly. */
 export function translateGraphEventToPrincipalGraph(real: RealGraphEventJson): {
-  action: "mint" | "attenuate" | "seal" | "verify" | "revoke";
-  blockId: string;
-  at: number;
-  agent: { source: string; externalId: string; displayName?: string | null };
-  onBehalfOf?: {
-    source: string;
-    externalId: string;
-    displayName?: string | null;
-  };
-  outcome?: "allow" | "deny";
-  reason?: string | null;
-  digest?: string | null;
+  occurredAt: Date;
+  principal: RealGraphEventJson["principal"];
+  onBehalfOf: RealGraphEventJson["onBehalfOf"];
+  resource: RealGraphEventJson["resource"];
+  action: string;
+  decision: "allow" | "deny";
+  denyReason: string | null;
+  taintLabels: readonly string[];
+  reversible: boolean | null;
+  requestDigest: string | null;
 } {
   if (!isAdcGraphAction(real.action)) {
     throw new Error(
@@ -190,24 +194,16 @@ export function translateGraphEventToPrincipalGraph(real: RealGraphEventJson): {
     );
   }
   return {
+    occurredAt: new Date(real.occurredAt),
+    principal: real.principal,
+    onBehalfOf: real.onBehalfOf,
+    resource: real.resource,
     action: real.action,
-    blockId: real.resource.externalId,
-    at: Date.parse(real.occurredAt),
-    agent: {
-      source: real.principal.source,
-      externalId: real.principal.externalId,
-      displayName: real.principal.displayName,
-    },
-    onBehalfOf: real.onBehalfOf
-      ? {
-          source: real.onBehalfOf.source,
-          externalId: real.onBehalfOf.externalId,
-          displayName: real.onBehalfOf.displayName,
-        }
-      : undefined,
-    outcome: real.action === "verify" ? real.decision : undefined,
-    reason: real.denyReason,
-    digest: real.requestDigest,
+    decision: real.decision,
+    denyReason: real.denyReason,
+    taintLabels: real.taintLabels,
+    reversible: real.reversible,
+    requestDigest: real.requestDigest,
   };
 }
 
