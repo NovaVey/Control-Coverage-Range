@@ -14,7 +14,7 @@
       }
     },
     "gaps/principal-graph#adc-graph-sink-event-shape-drift": {
-      "name": "src/adapters/adc-graph-sink.ts was written blind against @adc/graph and its guessed event shape does not match the real one",
+      "name": "CLOSED: src/adapters/adc-graph-sink.ts used to be written blind against @adc/graph, and its guessed event shape didn't match the real one",
       "cells": {
         "adc": {
           "outcome": "missed",
