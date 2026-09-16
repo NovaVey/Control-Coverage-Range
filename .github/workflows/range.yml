@@ -5,6 +5,29 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      repo:
+        description: >-
+          Which single assembled project's submodule to override — its stack/ directory
+          name (principal-graph, relationship-based-authorization,
+          attenuated-delegation-chain, or taint-tracked-tool-broker). Every other
+          submodule stays pinned at .gitmodules' own recorded commit. Lets a sibling
+          repo run this range's own corpus against its own PR head before merging,
+          instead of waiting for submodule-drift.yml's weekly, all-four-at-once check —
+          by then the breaking commit is already merged and unattributable. Leave unset
+          (every push/pull_request/workflow_dispatch run on this repo's own history
+          always does) to run entirely at normal pins. Not yet called by anything —
+          see this repo's own PR history for when that's wired up.
+        type: string
+        required: false
+      ref:
+        description: >-
+          Git ref `git fetch origin` accepts (branch, tag, or commit sha — a sibling
+          repo's own PR head sha, or `refs/pull/<n>/head`) to check out for `repo`'s
+          submodule instead of its pinned commit. Required together with `repo`.
+        type: string
+        required: false
 
 permissions:
   contents: write # needed only by the "Commit updated coverage baseline" step below, which
@@ -34,26 +57,47 @@ jobs:
       MINT_GRAPH_EVENTS_PATH: ./.range-mint-events/events.ndjson
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
+
+      - name: Override one submodule for a sibling repo's own PR head (workflow_call only)
+        if: inputs.repo != ''
+        run: |
+          case "${{ inputs.repo }}" in
+            principal-graph|relationship-based-authorization|attenuated-delegation-chain|taint-tracked-tool-broker) ;;
+            *)
+              echo "::error::unknown repo input '${{ inputs.repo }}' — must be one of the four stack/ directory names"
+              exit 1
+              ;;
+          esac
+          if [ -z "${{ inputs.ref }}" ]; then
+            echo "::error::repo was set but ref was not — both are required together"
+            exit 1
+          fi
+          echo "Overriding stack/${{ inputs.repo }} to ${{ inputs.ref }} (every other submodule stays at its pinned commit)"
+          git -C "stack/${{ inputs.repo }}" fetch --depth 1 origin "${{ inputs.ref }}"
+          git -C "stack/${{ inputs.repo }}" checkout FETCH_HEAD
 
       - name: Generate this run's ADC root key
         run: |
           echo "MINT_ROOT_SECRET_KEY_B64=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
-      - name: Build all three sibling projects (see scripts/build-stack.mjs)
+      - name: Build all four sibling projects (see scripts/build-stack.mjs)
         run: node scripts/build-stack.mjs
 
       - name: Install this range's own dependencies
         # --legacy-peer-deps works around a real npm/arborist crash
         # ("Cannot read properties of null (reading 'edgesOut')") resolving
-        # vitest 4's own peer-dependency graph — reproduced directly, not a
-        # guess; see README's own "Known npm quirk" note.
+        # vitest 4's own peer-dependency graph. Re-verified directly (not assumed) with
+        # this range's own @types/node now aligned to ^24 across every sibling repo —
+        # still reproduces identically, confirming this was never actually about
+        # @types/node disagreement; it's the vitest 4/arborist bug alone. See README's
+        # own "Known npm quirk" note.
         run: npm install --legacy-peer-deps
 
       - name: Lint, typecheck, unit test this range's own harness code

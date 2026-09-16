@@ -42,13 +42,13 @@ jobs:
       MINT_GRAPH_EVENTS_PATH: ./.range-mint-events/events.ndjson
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Bump every assembled project to its own current HEAD (this checkout only — never committed)
         run: |

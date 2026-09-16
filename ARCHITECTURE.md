@@ -22,22 +22,41 @@
 
 Three of the four (Principal-Graph, RBA, ADC) are consumed as git
 submodules under `stack/`, each pinned to a specific commit, built via
-`scripts/build-stack.mjs`, and imported by relative path into their own
-`dist/` output where this range needs their real code in-process
-(`src/adapters/principal-graph-lib.ts`) — Principal-Graph ships no npm
-package export at all (confirmed: `package.json` declares `"main":
-"dist/index.js"` but nothing under `src/` produces that file).
+`scripts/build-stack.mjs`. RBA is consumed purely over HTTP (its own real
+Fastify service, brought up via docker-compose); ADC's `@adc/core` is
+imported in-process for offline token operations; Principal-Graph is
+imported in-process too, where this range needs its real identity/audit
+code (`src/adapters/principal-graph-lib.ts`) — via a single, ordinary
+import from its own package root
+(`"principal-graph": "file:./stack/principal-graph"` in this range's own
+`package.json`), now that Principal-Graph ships a real `src/index.ts`
+re-export surface and a fixed
+build (`tsconfig.build.json`'s own `rootDir`) that actually produces the
+`dist/index.js` its `package.json` already claimed. Before that fix, this
+range had no choice but a fragile relative import six levels deep into
+`stack/principal-graph/dist/src/...` — that workaround is gone.
 
 The fourth, taint-tracked-tool-broker, started as a plain npm dependency
-(it IS a real, published package) and ended up a submodule too, for two
-confirmed, unrelated reasons documented in
-`taxonomy/gaps/tttb.yaml`'s `principal-feature-unreleased-at-pin-time`
-row: the published `1.4.0` predates the `BrokerOptions.principal` field
-this range's `rbac-aware` broker policy depends on, and a plain
-`github:...#<sha>` dependency reference turned out to be *unbuildable*
-(npm's git-install path only runs a `prepare` script, this project defines
-`prepack`; and `files` still gets applied to a git install, stripping
-`src/` before any build could happen). A git submodule sidesteps both.
+(it IS a real, published package) and ended up a submodule too, originally
+for two confirmed, unrelated reasons documented in
+`taxonomy/gaps/tttb.yaml`'s (now-closed)
+`principal-feature-unreleased-at-pin-time` row: the published `1.4.0`
+predates the `BrokerOptions.principal`
+field this range's `rbac-aware` broker policy depends on, and — at the
+time — a plain `github:...#<sha>` dependency reference was unbuildable
+(npm's git-install path only ran a `prepare` script, this project defined
+only `prepack`; and `files` still got applied to a git install, stripping
+`src/` before any build could happen). TTTB's own release-hygiene fix
+resolved the second reason directly (a real `prepare` script, `src/` added
+to `files`) — confirmed working: Principal-Graph's own `package.json` now
+depends on TTTB the exact same way, as a plain git dependency pinned to a
+commit. This range keeps the submodule regardless, now for a narrower,
+still-real reason (typechecking against source, not a built package's
+`.d.ts`, and matching this range's other three submodules' own build
+step) — and `scripts/build-stack.mjs` asserts this range's own
+`stack/taint-tracked-tool-broker` pin matches the exact commit
+Principal-Graph's `package.json` itself depends on, so the two can never
+silently diverge the way they did before either fix existed.
 
 `.gitmodules` pins every one of the four to an exact commit — a real,
 versioned assembly, not a moving target — see GAPS.md #5 for what that
@@ -81,17 +100,21 @@ worth stating precisely because the whole scoring model depends on it:
    identity rows.
 2. **Publish RBA schema + write tuples** — one derived tuple per live
    grant, using the *same* mapping Principal-Graph's own real RBA exporter
-   uses (`objectNs = resource.kind`, `objectId = "${source}:${externalId}"`,
-   `subjectNs = 'principal'`), run through `rbaIdentifier()`'s sanitization
-   (`src/scenario/identifiers.ts`) — **not** byte-for-byte identical to
-   what that real exporter would have produced, because nothing could be:
-   RBA's own real identifier grammar rejects that exporter's own `:`-joined
-   output outright, a confirmed cross-project finding in its own right (see
-   `taxonomy/gaps/principal-graph.yaml`'s
-   `rba-exporter-identifier-grammar-mismatch` row). A tuple this range
-   writes is that mapping's output up to this sanitization, which is as
-   close to "byte-for-byte" as any tuple can actually get and still be
-   accepted.
+   uses, byte-for-byte (`objectNs = resource.kind`, `objectId =
+   "${source}:${externalId}"`, `subjectNs = 'principal'`) — see
+   `src/scenario/identifiers.ts`'s `rbaSubject()`/`rbaObject()`. This used
+   to need its own sanitization first: RBA's identifier grammar applied the
+   same strict, schema-symbol-shaped pattern to `objectId`/`subjectId` as it
+   did to namespace/relation names, which every `:`-joined id this real
+   exporter produces violates (the now-closed
+   `rba-exporter-identifier-grammar-mismatch` row,
+   `taxonomy/gaps/principal-graph.yaml`). RBA's own
+   D-187/D-190 split that grammar — `objectId`/`subjectId` now go through a
+   much looser data-plane check, since an opaque foreign-system id is real
+   data, not a developer-authored schema symbol — so a real, unescaped id
+   passes directly. Removing this range's own sanitization workaround
+   (rather than keeping it "just in case") is deliberate: with it in place,
+   this range was never actually testing the byte-for-byte pairing.
 3. **Mint/attenuate ADC tokens** — `via: mint` goes through the real HTTP
    mint service (which itself calls RBA's real `POST /scope`/`POST /check`
    to bound the request); `via: offline` calls `@adc/core` directly, for a

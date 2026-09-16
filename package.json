@@ -7,7 +7,7 @@
   "author": "NovaVey",
   "private": true,
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "repository": {
     "type": "git",
@@ -70,13 +70,14 @@
     "@adc/broker": "file:./stack/attenuated-delegation-chain/packages/adc-broker",
     "@adc/graph": "file:./stack/attenuated-delegation-chain/packages/adc-graph",
     "@adc/revocation": "file:./stack/attenuated-delegation-chain/packages/adc-revocation",
+    "principal-graph": "file:./stack/principal-graph",
     "dotenv": "^17.4.2",
     "pg": "^8.23.0",
     "js-yaml": "^4.1.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/pg": "^8.23.1",
     "@eslint/js": "^9.18.0",
