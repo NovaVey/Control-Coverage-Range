@@ -166,11 +166,19 @@ jobs:
       # own updated baseline/coverage-matrix.snapshot.json into this checkout, above — the
       # commit-baseline job below is what actually pushes it (and COVERAGE.md/README.md)
       # to main, so it needs both that file and .range-out/ here, not just the latter.
+      #
+      # include-hidden-files: true is required because .range-out is itself a dot
+      # directory — upload-artifact@v4 silently drops hidden files/dirs by default (its
+      # own "security control"), so without this the artifact only ever contained
+      # baseline/coverage-matrix.snapshot.json ("1 file uploaded" in this step's own log)
+      # and commit-baseline's `cp .range-out/coverage-matrix.md COVERAGE.md` failed with
+      # "No such file or directory" on the very first real push-to-main run.
       - name: Upload coverage matrix + updated baseline
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-matrix
+          include-hidden-files: true
           path: |
             .range-out/
             baseline/coverage-matrix.snapshot.json
