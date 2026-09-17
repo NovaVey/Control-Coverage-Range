@@ -1,0 +1,109 @@
+id: mint-unauthenticated-caller-impersonation
+title: mallory obtains a real token for alice's own grants — POST /mint never authenticates who is asking
+summary: >-
+  services/mint's own README discloses this plainly, as a documented,
+  by-design limitation, not an oversight: "No mint-time authentication of
+  the caller... Anyone who can reach this service can request a mint for
+  any subject — RBA's bounding still confines what that subject can
+  actually be granted, but who is allowed to ask on Alice's behalf is a
+  separate concern this phase doesn't address." mallory never held any
+  grant on the resource below, and never impersonates alice's identity
+  anywhere upstream (no stolen credential, no session hijack) — she
+  simply POSTs { subject: alice, caveats: [...] } to the real mint
+  service, exactly as alice herself would. RBA confirms alice genuinely
+  holds the requested grant (the one check this service does perform)
+  and mints a validly signed token. mallory then presents that token to
+  a real ADC-gated tool call: wrapWithAdcGate's own verify() checks the
+  token's signature chain and caveats against the call's facts, never
+  against who is presenting it, so the call succeeds exactly as it would
+  for alice herself.
+taxonomy:
+  - { source: gaps/adc, id: mint-unauthenticated-caller-impersonation }
+assertsKnownGap: true
+stack:
+  principals:
+    - { id: alice, kind: human, externalId: alice }
+    - { id: mallory, kind: human, externalId: mallory }
+  resources:
+    - {
+        id: prod-config,
+        kind: repo,
+        externalId: prod-config,
+        displayName: "Production config repo",
+      }
+  grants:
+    - {
+        principalId: alice,
+        resourceId: prod-config,
+        relation: read,
+        source: manual,
+      }
+  rebac:
+    schema: |
+      namespace repo {
+        relation owner: principal
+        relation read: principal | group#member
+        permission view = read | owner
+      }
+    tuples: []
+  adcTokens:
+    - id: alice-token-mallory-obtained
+      via: mint
+      mint:
+        subjectPrincipalId: alice
+        caveats:
+          - { kind: scope, triples: [["repo", "prod-config", "read"]] }
+  adcRevoked: []
+tools:
+  - name: read_repo_config
+    capabilities: []
+    adcGate: resource-scoped
+    adcResourceKind: repo
+    adcRelation: read
+    adcResourceIdArg: repoId
+    mockResult: "prod-config contents"
+adversary:
+  actingPrincipalId: mallory
+  steps:
+    - tool: read_repo_config
+      args: { repoId: prod-config }
+      adcToken: alice-token-mallory-obtained
+expected:
+  adc:
+    result: allow
+  rebac:
+    check:
+      {
+        subjectPrincipalId: mallory,
+        relation: read,
+        objectResourceId: prod-config,
+      }
+    allowed: false
+  cells:
+    - layer: adc
+      outcome: missed
+      rationale: >-
+        mallory is the broker's own configured acting principal for this
+        whole session (BrokerOptions.principal, src/adapters/broker.ts)
+        — but wrapWithAdcGate's getToken()/verify() call never reads
+        that field at all; it only ever inspects whichever token the
+        step presents (adcToken: alice-token-mallory-obtained) and the
+        call's own facts. The token itself is completely valid — a
+        real, correctly-signed mint against a grant alice genuinely
+        holds — so verify() reports ok:true exactly as it would if
+        alice were the one calling. Nothing between the mint request
+        and this call ever records or checks that mallory, not alice,
+        is the one actually acting.
+    - layer: rebac
+      outcome: observed-only
+      rationale: >-
+        Asked directly, RBA correctly reports mallory holds nothing on
+        prod-config at all — no tuple connects her to it. The
+        information that would catch this exists in a real, live,
+        reachable layer; it is simply never consulted anywhere on the
+        ADC-gated call path, which checks only the token's own claims,
+        never the live identity of whoever is presenting it. Same root
+        pattern as wildcard-scope-over-broad-delegation's own rebac
+        finding, from a different mechanism: a call-time identity check
+        RBA could answer, that nothing in the assembled stack ever
+        asks it.
