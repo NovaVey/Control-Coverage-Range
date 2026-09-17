@@ -57,7 +57,34 @@ jobs:
       MINT_GRAPH_EVENTS_PATH: ./.range-mint-events/events.ndjson
 
     steps:
-      - uses: actions/checkout@v5
+      # `actions/checkout@v5` with no explicit `repository:` checks out
+      # `github.repository` — and inside a `workflow_call` invocation, that's
+      # the CALLING repo (e.g. relationship-based-authorization), not this
+      # one: the run is fundamentally a run of the caller's workflow, this
+      # job's steps are just sourced from here. Left implicit, every step
+      # after this one (the submodule override, docker compose, the CLI
+      # itself) silently operates on the caller's checkout instead — which
+      # has no stack/ directory and no docker-compose.yml at all, so it fails
+      # immediately with "No such file or directory" / "no configuration
+      # file provided: not found". Found via composition.yml's first real
+      # cross-repo call (this workflow_call path was, until now, "not yet
+      # called by anything" — see this step's own history).
+      #
+      # `inputs.repo != ''` is workflow_call-only — a direct push/pull_request/
+      # workflow_dispatch trigger on this repo never sets it (same test the
+      # "Override one submodule" step below already uses) — so this only
+      # changes behavior for the workflow_call path; a direct trigger's
+      # checkout is byte-identical to before.
+      - name: Checkout (workflow_call — always this repo's own default branch, regardless of caller)
+        if: inputs.repo != ''
+        uses: actions/checkout@v5
+        with:
+          repository: NovaVey/Control-Coverage-Range
+          submodules: recursive
+
+      - name: Checkout (direct trigger — the ref that triggered this run)
+        if: inputs.repo == ''
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
