@@ -45,6 +45,22 @@ for (const dir of STACK_DIRS) {
 // quietly typechecking or running against a Broker feature Principal-Graph's own real
 // exporter was never built against.
 function assertTttbPinsAgree() {
+  // Set by range.yml's "Override one submodule" step, workflow_call only —
+  // absent for this repo's own direct push/pull_request/workflow_dispatch
+  // triggers, where the premise below still holds. When
+  // taint-tracked-tool-broker itself is the overridden submodule, this run
+  // is deliberately testing a commit that's newer than (and hasn't yet been
+  // pinned by) Principal-Graph's own dependency on it — exactly the
+  // divergence this assertion exists to catch on an ordinary run, but here
+  // it's the point: proving whether that commit is safe for Principal-Graph's
+  // real exporter BEFORE either pin moves to it, not after.
+  if (process.env.RANGE_OVERRIDE_REPO === 'taint-tracked-tool-broker') {
+    console.log(
+      'Skipping the stack/taint-tracked-tool-broker <-> stack/principal-graph pin-agreement check: ' +
+        'this run overrides stack/taint-tracked-tool-broker itself to an unpinned-elsewhere commit.',
+    );
+    return;
+  }
   const principalGraphPackageJson = JSON.parse(
     readFileSync(`${REPO_ROOT}stack/principal-graph/package.json`, 'utf8'),
   );
