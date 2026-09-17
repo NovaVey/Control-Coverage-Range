@@ -34,16 +34,17 @@ for (const dir of STACK_DIRS) {
   }
 }
 
-// Principal-Graph's own package.json now pins taint-tracked-tool-broker as a real git
-// dependency (`"taint-tracked-tool-broker": "git+https://.../Taint-Tracked-Tool-Broker.git#<sha>"`)
-// — this range's own stack/taint-tracked-tool-broker submodule pin is a SEPARATE,
-// independently-recorded commit (.gitmodules + the superproject's own tree), and nothing
-// before this check ever verified the two agree. They silently didn't, once: this range's
-// own GAPS.md #34/taxonomy row on the subject predates Principal-Graph's own TTTB pin
-// having moved past it. Failing loudly here, before either project's own build even
-// starts, is what would have caught that the moment it happened, instead of a scenario
-// quietly typechecking or running against a Broker feature Principal-Graph's own real
-// exporter was never built against.
+// Principal-Graph's own package.json pins taint-tracked-tool-broker as a real git
+// dependency (`"taint-tracked-tool-broker": "git+https://.../Taint-Tracked-Tool-Broker.git#<sha>"`,
+// in either dependencies or devDependencies — see assertTttbPinsAgree()'s own comment
+// below for why both are checked) — this range's own stack/taint-tracked-tool-broker
+// submodule pin is a SEPARATE, independently-recorded commit (.gitmodules + the
+// superproject's own tree), and nothing before this check ever verified the two agree.
+// They silently didn't, once: this range's own GAPS.md #34/taxonomy row on the subject
+// predates Principal-Graph's own TTTB pin having moved past it. Failing loudly here,
+// before either project's own build even starts, is what would have caught that the
+// moment it happened, instead of a scenario quietly typechecking or running against a
+// Broker feature Principal-Graph's own real exporter was never built against.
 function assertTttbPinsAgree() {
   // Set by range.yml's "Override one submodule" step, workflow_call only —
   // absent for this repo's own direct push/pull_request/workflow_dispatch
@@ -64,10 +65,21 @@ function assertTttbPinsAgree() {
   const principalGraphPackageJson = JSON.parse(
     readFileSync(`${REPO_ROOT}stack/principal-graph/package.json`, 'utf8'),
   );
-  const declared = principalGraphPackageJson.dependencies?.['taint-tracked-tool-broker'];
+  // Principal-Graph moved this from dependencies to devDependencies once its
+  // production code no longer called into taint-tracked-tool-broker at
+  // runtime (it only needs the real package to build/typecheck against and
+  // to run its own test suite, which constructs a real broker directly) —
+  // see NovaVey/Principal-Graph#53. Either still pins an exact commit
+  // Principal-Graph's own npm ci/build installs and compiles against, which
+  // is the only thing this assertion actually cares about — check both,
+  // dependencies first, so a future re-introduction as a real runtime
+  // dependency is picked up the same way.
+  const declared =
+    principalGraphPackageJson.dependencies?.['taint-tracked-tool-broker'] ??
+    principalGraphPackageJson.devDependencies?.['taint-tracked-tool-broker'];
   if (!declared) {
     console.error(
-      "stack/principal-graph/package.json no longer declares a taint-tracked-tool-broker dependency at all — this assertion (and this range's own reason for pinning a matching submodule commit) needs re-examining, not silently skipping.",
+      "stack/principal-graph/package.json no longer declares a taint-tracked-tool-broker dependency (in either dependencies or devDependencies) at all — this assertion (and this range's own reason for pinning a matching submodule commit) needs re-examining, not silently skipping.",
     );
     process.exit(1);
   }
