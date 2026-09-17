@@ -93,3 +93,39 @@ rows:
     reference: "attenuated-delegation-chain/services/mint/src/bounding.ts (POST /scope call site); relationship-based-authorization/src/api/server.ts:1727-1728 (POST /scope, 20/min checkBatchRateLimit)"
     stillOpen: true
     requiresScenario: true
+  - id: mint-unauthenticated-caller-impersonation
+    name: "POST /mint never authenticates who is asking — anyone can obtain a real token for any subject's real grants"
+    summary: >-
+      services/mint's own README discloses this directly, as a
+      documented, by-design limitation rather than an oversight: "No
+      mint-time authentication of the caller... Anyone who can reach
+      this service can request a mint for any subject — RBA's bounding
+      still confines what that subject can actually be granted, but who
+      is allowed to ask on Alice's behalf is a separate concern this
+      phase doesn't address." POST /mint's own request body (README's
+      own documented shape) carries only `subject` and `caveats` — no
+      caller-identity field exists anywhere for this check to fail
+      closed on even in principle. The practical consequence, confirmed
+      by reading @adc/broker's gate.ts and @adc/core's verify()
+      directly: neither ever consults the broker's own configured
+      acting principal (BrokerOptions.principal) when verifying a
+      presented token — verify() checks only the token's signature
+      chain and caveats against the call's facts, so a token minted for
+      subject alice verifies identically no matter who actually
+      presents it. Deliberately left this way in the same round of work
+      that added POST /revoke's own admin auth: "POST /revoke is a
+      rare, single-operator admin action while POST /mint is this
+      service's entire normal traffic, with no established
+      caller-identity model to authenticate against." A real deployment
+      is documented to need its own network boundary/auth layer in
+      front of this service — nothing in the four assembled projects
+      themselves provides one.
+    reference: >-
+      attenuated-delegation-chain/services/mint/README.md ("No
+      mint-time authentication of the caller", POST /mint's own
+      documented request shape); attenuated-delegation-chain/packages/adc-broker/src/gate.ts
+      (wrapWithAdcGate's getToken()/verify() call, no principal
+      cross-check); attenuated-delegation-chain/packages/adc-core/src/caveats.ts
+      (evaluateCaveat(), no caller-identity fact anywhere in Facts)
+    stillOpen: true
+    requiresScenario: true
