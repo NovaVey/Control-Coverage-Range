@@ -166,3 +166,50 @@ rows:
       write, because the fix isn't a new behavior to assert, it's the
       removal of a workaround the whole corpus now implicitly proves by
       continuing to pass real tuple writes against a live RBA instance.
+  - id: workspace-grant-unescaped-identity
+    name: "CLOSED: the Workspace adapter's email-shaped identities used to be rejected outright by RBA's own tuple-write grammar"
+    summary: >-
+      Originally: src/adapters/workspace-groups.ts keys every
+      principal/resource by email (source: 'workspace', externalId e.g.
+      "alice@acme.example") — the one real adapter in this whole stack whose
+      externalId routinely contains '@'. @novavey/contracts's
+      encodeIdentityRef (the shared identity codec this exporter and this
+      range's own rbaSubject()/rbaObject() both call — see the now-closed
+      rba-exporter-identifier-grammar-mismatch row above) never escaped
+      anything; it just concatenated source/externalId. That unescaped '@'
+      violated relationship-based-authorization's own real tuple-write
+      grammar (invalidDataPlaneIdReason: no control character, '#', or
+      '@'), so RBA rejected every such write with 400
+      tuple_validation_failed — confirmed end to end against a real RBA
+      server. src/exporters/rba.ts's own dead-letter mechanism
+      (rba_export_dead_letter) then blocked the watermark for
+      deadLetterThreshold runs before graduating the tuple to permanent
+      per-run retry, meaning every Workspace grant Principal-Graph audits
+      was silently unreachable in RBA — never a loud failure, just an
+      audit tool quietly under-reporting what someone can actually reach,
+      the unsafe direction. Nothing in this corpus's own scenarios, nor
+      Principal-Graph's own exporter test suite, ever seeded an
+      email-shaped identity, so nothing caught it before a real end-to-end
+      reproduction did.
+
+      RESOLVED: encodeIdentityRef/decodeIdentityRef now percent-encode/
+      decode '%', '#', '@', and control characters in source/externalId,
+      so the composite id always satisfies RBA's unchanged grammar
+      regardless of what the foreign externalId contains
+      (NovaVey/Stack-Contracts@9ea9e7d — @novavey/contracts 0.2.0).
+      Principal-Graph's own src/exporters/rba.ts needed no code change —
+      it already imported encodeIdentityRef/decodeIdentityRef, so bumping
+      its dependency pin alone fixed the live bug (NovaVey/Principal-Graph#52).
+      Unlike the grammar-mismatch row above, this one DOES get a dedicated
+      scenario: nothing else in the corpus produces this id shape, so
+      nothing else would keep it closed.
+    reference: >-
+      principal-graph/src/adapters/workspace-groups.ts (member.email as
+      every principal/resource's own externalId); principal-graph/
+      src/exporters/rba.ts (tupleFromRow(), encodeIdentityRef, the
+      dead-letter mechanism this bug fed forever); stack-contracts/
+      src/identity/codec.ts (encodeIdentityRef/decodeIdentityRef, now
+      percent-encoding); scenarios/rebac/workspace-grant-unescaped-identity.yaml
+      (this row's own dedicated scenario)
+    stillOpen: false
+    requiresScenario: true
