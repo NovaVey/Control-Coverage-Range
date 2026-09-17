@@ -221,6 +221,8 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+      pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v5
 
@@ -237,7 +239,21 @@ jobs:
       # wrote to .range-out/coverage-matrix.md) and its embed in README.md — see README's
       # own "Current coverage matrix" section. One commit, one push, same gate: a reader
       # shouldn't have to build four projects and run Docker to see a single cell.
+      #
+      # main is branch-protected ("Changes must be made through a pull request",
+      # required status check "range") — a plain `git push` here always fails with
+      # GH013 once the diff is ever non-empty (see the two failed runs this replaced:
+      # #30/#32, both masked until PR #12/#13 first produced a real matrix change).
+      # So: push to a bot branch, open a PR, and let GitHub's native auto-merge land
+      # it once that PR's own required "range" check passes. The explicit
+      # `gh workflow run` below is a safety net — a PR opened via GITHUB_TOKEN may not
+      # itself trigger a new pull_request-triggered workflow run (GitHub suppresses
+      # recursive triggers from the default token for most event types), so this
+      # dispatches range.yml directly against the bot branch to guarantee the
+      # required check actually runs instead of leaving the PR stuck forever.
       - name: Commit updated coverage baseline + rendered matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cp .range-out/coverage-matrix.md COVERAGE.md
           node scripts/update-readme-coverage.mjs
@@ -247,6 +263,15 @@ jobs:
           if git diff --cached --quiet; then
             echo "Coverage matrix unchanged."
           else
+            branch="bot/coverage-baseline-${GITHUB_RUN_ID}"
+            git checkout -b "$branch"
             git commit -m "chore: update coverage matrix (baseline + COVERAGE.md + README) [skip ci]"
-            git push
+            git push -u origin "$branch"
+            pr_url=$(gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore: update coverage matrix (baseline + COVERAGE.md + README) [skip ci]" \
+              --body "Automated coverage baseline update from the \`range\` job on main (run ${GITHUB_RUN_ID}). Auto-merges once its own required \`range\` check passes.")
+            gh workflow run range.yml --ref "$branch"
+            gh pr merge "$pr_url" --auto --squash --delete-branch
           fi
