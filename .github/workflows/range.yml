@@ -17,8 +17,8 @@ on:
           instead of waiting for submodule-drift.yml's weekly, all-four-at-once check —
           by then the breaking commit is already merged and unattributable. Leave unset
           (every push/pull_request/workflow_dispatch run on this repo's own history
-          always does) to run entirely at normal pins. Not yet called by anything —
-          see this repo's own PR history for when that's wired up.
+          always does) to run entirely at normal pins. Called by composition.yml in
+          each of the four sibling repos, against their own PR head.
         type: string
         required: false
       ref:
@@ -92,27 +92,36 @@ jobs:
 
       - name: Override one submodule for a sibling repo's own PR head (workflow_call only)
         if: inputs.repo != ''
+        # inputs.repo/inputs.ref go through env: rather than being spliced straight into
+        # the script below via ${{ }} — a caller passing a crafted ref (this range currently
+        # trusts each composition.yml to pass its own PR head sha, not arbitrary input, but
+        # nothing here enforced that) would otherwise have its value substituted into the
+        # script's literal text before the shell ever runs, letting it inject shell syntax
+        # instead of just being data the case/test statements below inspect.
+        env:
+          RANGE_REPO_INPUT: ${{ inputs.repo }}
+          RANGE_REF_INPUT: ${{ inputs.ref }}
         run: |
-          case "${{ inputs.repo }}" in
+          case "$RANGE_REPO_INPUT" in
             principal-graph|relationship-based-authorization|attenuated-delegation-chain|taint-tracked-tool-broker) ;;
             *)
-              echo "::error::unknown repo input '${{ inputs.repo }}' — must be one of the four stack/ directory names"
+              echo "::error::unknown repo input '$RANGE_REPO_INPUT' — must be one of the four stack/ directory names"
               exit 1
               ;;
           esac
-          if [ -z "${{ inputs.ref }}" ]; then
+          if [ -z "$RANGE_REF_INPUT" ]; then
             echo "::error::repo was set but ref was not — both are required together"
             exit 1
           fi
-          echo "Overriding stack/${{ inputs.repo }} to ${{ inputs.ref }} (every other submodule stays at its pinned commit)"
-          git -C "stack/${{ inputs.repo }}" fetch --depth 1 origin "${{ inputs.ref }}"
-          git -C "stack/${{ inputs.repo }}" checkout FETCH_HEAD
+          echo "Overriding stack/$RANGE_REPO_INPUT to $RANGE_REF_INPUT (every other submodule stays at its pinned commit)"
+          git -C "stack/$RANGE_REPO_INPUT" fetch --depth 1 origin "$RANGE_REF_INPUT"
+          git -C "stack/$RANGE_REPO_INPUT" checkout FETCH_HEAD
           # Read by scripts/build-stack.mjs's assertTttbPinsAgree(): when
           # taint-tracked-tool-broker itself is the one being overridden, that
           # check's own premise (every sibling's pin on it already agrees)
           # doesn't hold by construction — this run's whole point is testing a
           # commit nothing has pinned anywhere else yet.
-          echo "RANGE_OVERRIDE_REPO=${{ inputs.repo }}" >> "$GITHUB_ENV"
+          echo "RANGE_OVERRIDE_REPO=$RANGE_REPO_INPUT" >> "$GITHUB_ENV"
 
       - name: Generate this run's ADC root key
         run: |
@@ -194,9 +203,20 @@ jobs:
   # triggered caller. See the range job's own permissions history for what this replaces
   # and why: a single job requesting contents:write unconditionally, at the workflow level,
   # meant every caller had to grant write it would never actually use.
+  #
+  # github.event_name/github.ref alone aren't enough to gate this job: under workflow_call
+  # both are the CALLING repo's — every composition.yml today only ever triggers on
+  # pull_request, so this job is unreachable in practice, but that's an accident of what
+  # callers currently do, not something this condition enforces. If a sibling repo's
+  # composition.yml ever also ran on push to ITS OWN main, this job would try to commit
+  # this range's baseline into that repo's checkout instead. The explicit repository check
+  # makes this job only ever fire for a real push to this repo's own main, regardless of
+  # what any caller's own triggers do.
   commit-baseline:
     needs: range
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'NovaVey/Control-Coverage-Range' &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
