@@ -1,0 +1,82 @@
+id: workspace-grant-unescaped-identity
+title: An email-shaped Workspace identity round-trips through a real RBA tuple write
+summary: >-
+  Principal-Graph's Workspace adapter (src/adapters/workspace-groups.ts) keys
+  every principal/resource by email (source: workspace, e.g.
+  alice@acme.example) — the one real adapter in the whole assembled stack
+  whose externalId routinely contains the '@' character. @novavey/contracts's
+  encodeIdentityRef used to send that character straight through unescaped,
+  which relationship-based-authorization's own tuple-write grammar
+  (invalidDataPlaneIdReason) rejects outright — confirmed end to end against
+  a real RBA server before the fix (see taxonomy/gaps/principal-graph.yaml's
+  now-closed workspace-grant-unescaped-identity row). Nothing in this corpus
+  previously seeded an email-shaped identity, so nothing caught it: every
+  other identity-layer scenario's externalId is a plain word with no
+  reserved character. This scenario seeds exactly that shape and proves both
+  the write and the read-back succeed against a real, live RBA instance —
+  the same assembled pairing every other scenario in this corpus already
+  exercises for a non-email identity.
+taxonomy:
+  - { source: gaps/principal-graph, id: workspace-grant-unescaped-identity }
+stack:
+  principals:
+    - {
+        id: alice,
+        kind: human,
+        source: workspace,
+        externalId: "alice@acme.example",
+      }
+  resources:
+    - {
+        id: eng-group,
+        kind: group,
+        source: workspace,
+        externalId: "eng@acme.example",
+      }
+  grants:
+    - {
+        principalId: alice,
+        resourceId: eng-group,
+        relation: member,
+        source: workspace,
+      }
+  rebac:
+    schema: |
+      namespace group {
+        relation member: principal | group#member
+        permission view = member
+      }
+    tuples: []
+  adcTokens: []
+tools: []
+adversary:
+  actingPrincipalId: alice
+  steps: []
+expected:
+  rebac:
+    check:
+      {
+        subjectPrincipalId: alice,
+        relation: member,
+        objectResourceId: eng-group,
+      }
+    allowed: true
+  cells:
+    - layer: rebac
+      outcome: missed
+      rationale: >-
+        alice's grant is derived automatically from stack.grants[] into an
+        RBA tuple (src/scenario/seed.ts's grantsToRebacTuples()) using
+        source: workspace and an email-shaped externalId — exactly the id
+        shape Principal-Graph's real Workspace adapter produces, run through
+        the identical encodeIdentityRef this range's own rbaSubject()/
+        rbaObject() and Principal-Graph's real exporter both call. Before
+        the identity-codec escaping fix, that write would have been
+        rejected outright by RBA's own grammar and this scenario would have
+        failed to seed at all, not merely scored wrong. allowed:true here
+        means the check correctly reads the grant back — 'missed' is the
+        only valid diagnostic-layer claim for a check RBA did not deny (see
+        src/scoring/score.ts's validateDiagnosticLayer), not a security
+        finding: the assertion this scenario actually makes is that a real
+        write and a real read-back both succeed against a live RBA instance
+        for an id shape nothing else in this corpus produces.
