@@ -30,9 +30,7 @@ on:
         required: false
 
 permissions:
-  contents: write # needed only by the "Commit updated coverage baseline" step below, which
-  # runs on push-to-main only — a pull_request run never gets write access to push, since
-  # GITHUB_TOKEN for a pull_request event is always read-only regardless of this setting.
+  contents: read
 
 jobs:
   range:
@@ -161,20 +159,57 @@ jobs:
       - name: Check for coverage regressions against the committed baseline
         run: npm run range:check-regression -- --out .range-out
 
-      # range:check-regression (src/cli/index.ts's cmdCheckRegression) already writes its
-      # own updated baseline/coverage-matrix.snapshot.json into this checkout on every run
-      # that isn't itself a regression — but a checkout is thrown away when the job ends, so
-      # without this step nothing ever actually reaches the repository: every future run,
-      # PR or push alike, would find "no baseline yet" again and silently accept whatever
-      # the corpus currently produces, never comparing against real history. This is the
-      # one place that gap closes — push-to-main only, since a PR should be judged against
-      # main's own last-known-good baseline, never allowed to quietly rewrite it itself.
-      # Also, in this same commit: COVERAGE.md (the same rendered matrix range:run already
+      - name: Every GAPS.md-derived taxonomy row has an asserting scenario
+        run: npm run range:gaps-coverage
+
+      # range:check-regression (src/cli/index.ts's cmdCheckRegression) already wrote its
+      # own updated baseline/coverage-matrix.snapshot.json into this checkout, above — the
+      # commit-baseline job below is what actually pushes it (and COVERAGE.md/README.md)
+      # to main, so it needs both that file and .range-out/ here, not just the latter.
+      - name: Upload coverage matrix + updated baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-matrix
+          path: |
+            .range-out/
+            baseline/coverage-matrix.snapshot.json
+
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose logs
+
+  # Split into its own job, with its own contents:write permission, so the range job
+  # above only ever needs contents:read — including when called via workflow_call from a
+  # sibling repo's composition.yml, which (unlike a push straight to this repo's own main)
+  # never reaches this job at all: its own `if` below is never true for a pull_request-
+  # triggered caller. See the range job's own permissions history for what this replaces
+  # and why: a single job requesting contents:write unconditionally, at the workflow level,
+  # meant every caller had to grant write it would never actually use.
+  commit-baseline:
+    needs: range
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Download coverage matrix + updated baseline from the range job
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-matrix
+
+      # Also, in this same commit: COVERAGE.md (the rendered matrix range:run already
       # wrote to .range-out/coverage-matrix.md) and its embed in README.md — see README's
       # own "Current coverage matrix" section. One commit, one push, same gate: a reader
       # shouldn't have to build four projects and run Docker to see a single cell.
-      - name: Commit updated coverage baseline + rendered matrix (push to main only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Commit updated coverage baseline + rendered matrix
         run: |
           cp .range-out/coverage-matrix.md COVERAGE.md
           node scripts/update-readme-coverage.mjs
@@ -187,17 +222,3 @@ jobs:
             git commit -m "chore: update coverage matrix (baseline + COVERAGE.md + README) [skip ci]"
             git push
           fi
-
-      - name: Every GAPS.md-derived taxonomy row has an asserting scenario
-        run: npm run range:gaps-coverage
-
-      - name: Upload coverage matrix
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-matrix
-          path: .range-out/
-
-      - name: Compose logs on failure
-        if: failure()
-        run: docker compose logs
