@@ -69,6 +69,27 @@
         }
       }
     },
+    "gaps/adc#mint-unauthenticated-caller-impersonation": {
+      "name": "POST /mint never authenticates who is asking — anyone can obtain a real token for any subject's real grants",
+      "cells": {
+        "adc": {
+          "outcome": "missed",
+          "scenarioIds": [
+            "mint-unauthenticated-caller-impersonation"
+          ],
+          "anyInvalid": false,
+          "anyAssertsKnownGap": true
+        },
+        "rebac": {
+          "outcome": "observed-only",
+          "scenarioIds": [
+            "mint-unauthenticated-caller-impersonation"
+          ],
+          "anyInvalid": false,
+          "anyAssertsKnownGap": false
+        }
+      }
+    },
     "identity#stale-grant-abuse": {
       "name": "Stale grant abuse",
       "cells": {
@@ -687,6 +708,19 @@
           "outcome": "observed-only",
           "scenarioIds": [
             "wildcard-minus-exceptions-unenumerable"
+          ],
+          "anyInvalid": false,
+          "anyAssertsKnownGap": false
+        }
+      }
+    },
+    "gaps/principal-graph#workspace-grant-unescaped-identity": {
+      "name": "CLOSED: the Workspace adapter's email-shaped identities used to be rejected outright by RBA's own tuple-write grammar",
+      "cells": {
+        "rebac": {
+          "outcome": "missed",
+          "scenarioIds": [
+            "workspace-grant-unescaped-identity"
           ],
           "anyInvalid": false,
           "anyAssertsKnownGap": false
