@@ -52,16 +52,19 @@ rows:
       `prepare` script, `files` allowlist including `src`);
       principal-graph/package.json (its own working git dependency on this
       exact project); .gitmodules (stack/taint-tracked-tool-broker);
-      scripts/build-stack.mjs (assertTttbPinsAgree())
+      scripts/build-stack.mjs (assertSharedPackagePinsAgree())
     stillOpen: false
     requiresScenario: false
     exemptionRationale: >-
       A dependency-resolution/build-integrity finding about this range's
       own packaging choice, not an attack technique — no adversary steps
       could meaningfully demonstrate a packaging fix. The fix is verified
-      structurally: scripts/build-stack.mjs's own assertTttbPinsAgree()
-      fails CI loudly the moment this range's submodule pin and
-      Principal-Graph's own dependency pin ever disagree again.
+      structurally: scripts/build-stack.mjs's own
+      assertSharedPackagePinsAgree() fails CI loudly the moment this
+      range's submodule pin and Principal-Graph's own dependency pin ever
+      disagree again — now one instance of a check generalized to any
+      package more than one sibling pins independently, not a
+      taint-tracked-tool-broker special case.
   - id: gap-01-untracked-context-channel
     name: "GAPS.md #1 — Untracked context-injection channels"
     summary: >-

@@ -116,11 +116,12 @@ jobs:
           echo "Overriding stack/$RANGE_REPO_INPUT to $RANGE_REF_INPUT (every other submodule stays at its pinned commit)"
           git -C "stack/$RANGE_REPO_INPUT" fetch --depth 1 origin "$RANGE_REF_INPUT"
           git -C "stack/$RANGE_REPO_INPUT" checkout FETCH_HEAD
-          # Read by scripts/build-stack.mjs's assertTttbPinsAgree(): when
-          # taint-tracked-tool-broker itself is the one being overridden, that
-          # check's own premise (every sibling's pin on it already agrees)
-          # doesn't hold by construction — this run's whole point is testing a
-          # commit nothing has pinned anywhere else yet.
+          # Read by scripts/build-stack.mjs's assertSharedPackagePinsAgree():
+          # when taint-tracked-tool-broker (or principal-graph) is the one
+          # being overridden, that check's own premise (every sibling's pin
+          # on it already agrees) doesn't hold by construction — this run's
+          # whole point is testing a commit nothing has pinned anywhere
+          # else yet.
           echo "RANGE_OVERRIDE_REPO=$RANGE_REPO_INPUT" >> "$GITHUB_ENV"
 
       - name: Generate this run's ADC root key
